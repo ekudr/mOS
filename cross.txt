@@ -1,0 +1,19 @@
+[binaries]
+c = 'riscv64-unknown-elf-gcc'
+cpp = 'riscv64-unknown-elf-g++'
+ar = 'riscv64-unknown-elf-ar'
+strip = 'riscv64-unknown-elf-strip'
+ld = 'riscv64-unknown-elf-ld'
+objcopy = 'riscv64-unknown-elf-objcopy'
+
+[host_machine]
+system = 'none'
+cpu_family = 'riscv64'
+cpu = 'u74'
+endian = 'little'
+
+[target_machine]
+system = 'none'
+cpu_family = 'riscv64'
+cpu = 'u74'
+endian = 'little'

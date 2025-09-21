@@ -1,0 +1,4 @@
+option('board', type : 'combo', 
+        choices : ['vf2', 'qemu', 'bpi-f3'],
+        value : 'vf2',
+        description : 'Hardware board') 

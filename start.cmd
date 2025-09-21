@@ -1,0 +1,1 @@
+"\Program Files\qemu\qemu-system-riscv64.exe" -M sifive_u -smp 5 -m 2G -s -serial stdio -kernel build\img.bin
