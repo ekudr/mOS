@@ -45,6 +45,15 @@
 #define SYS_irq_set 50
 #define SYS_irq_act 51
 
+#define SYS_endpt_crt 60
+#define SYS_cap_garnt 61
+#define SYS_ipc_snd 62
+#define SYS_ipc_rcv 63
+#define SYS_ipc_call 64
+#define SYS_ipc_rpl 65
+
+#define SYS_cap_crt 100
+#define SYS_fast_call 101
 
 
 #endif /* _SYSCALL_H */

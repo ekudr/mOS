@@ -8,6 +8,7 @@
 #include <signals.h>
 #include <khash.h>
 #include <irq.h>
+#include <cap.h>
 
 int sbi_debug_console_write(const char *bytes, unsigned int num_bytes);
 
@@ -182,4 +183,97 @@ uint64_t sys_snd_sig(void)
     dst_task = sched_find_task(tid);
 
     return (uint64_t)signal_send(dst_task, sig, payload);
+}
+
+uint64_t sys_ipc_snd(void)
+{
+    uint64_t id, uaddr, size;
+    id = syscall_argraw(0);
+    uaddr = syscall_argraw(1);
+    size = syscall_argraw(2);
+    task_t *t = mytask();
+    return sys_ipc_send(t, id, uaddr, size);
+}
+
+uint64_t sys_ipc_rcv(void)
+{
+    uint64_t id, uaddr, size;
+    id = syscall_argraw(0);
+    uaddr = syscall_argraw(1);
+    size = syscall_argraw(2);
+    task_t *t = mytask();
+    return sys_ipc_recv(t, id, uaddr, size);
+}
+
+uint64_t sys_ipc_rpl(void)
+{
+    uint64_t id, uaddr, size;
+    id    = syscall_argraw(0);
+    uaddr = syscall_argraw(1);
+    size  = syscall_argraw(2);
+    task_t *t = mytask();
+    return sys_ipc_replay(t, id, uaddr, size);
+}
+
+uint64_t sys_ipc_cll(void)
+{
+    uint64_t id, umsg, urep, size;
+    id = syscall_argraw(0);
+    umsg = syscall_argraw(1);
+    urep = syscall_argraw(2);
+    size = syscall_argraw(3);
+    task_t *t = mytask();
+    return sys_ipc_call(t, id, umsg, urep, size);
+}
+
+uint64_t sys_endpt_creat(void)
+{
+    uint64_t right;
+    right = syscall_argraw(0);
+    task_t *t = mytask();
+    return sys_endpoint_create(t, right);
+}
+
+uint64_t sys_cap_grnt(void)
+{
+    uint64_t from_id, to_pid, to_slot, req_rights;
+    from_id     = syscall_argraw(0);
+    to_pid      = syscall_argraw(1);
+    to_slot     = syscall_argraw(2); 
+    req_rights  = syscall_argraw(3); 
+    return sys_cap_grant((int)from_id, to_pid, (int)to_slot, (uint32_t)req_rights);
+}
+
+uint64_t sys_cap_create(void)
+{
+    uint64_t type, rights;
+    type = syscall_argraw(0);
+    rights = syscall_argraw(1);
+    task_t *t = mytask();
+    return sys_capability_create(t, type, rights);
+}
+
+uint64_t sys_fast_call(void)
+{
+    uint64_t arg1, arg2, arg3, arg4, arg5, arg6, arg7;
+    arg1 = syscall_argraw(0);
+    arg2 = syscall_argraw(1);
+    arg3 = syscall_argraw(2);
+    arg4 = syscall_argraw(3);
+    arg5 = syscall_argraw(4);
+    arg6 = syscall_argraw(5);
+    arg7 = syscall_argraw(6);
+    debug("[IPC_CALL] arg1 0x%lX arg2 0x%lX arg3 0x%lX arg4 0x%lX arg5 0x%lX arg6 0x%lX arg7 0x%lX\n",
+                arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+        
+    task_t *t = mytask();
+
+    t->trapframe->a1 = 0x101;
+    t->trapframe->a2 = 0x103;
+    t->trapframe->a3 = 0x104;
+    t->trapframe->a4 = 0x105;
+    t->trapframe->a5 = 0x106;
+    t->trapframe->a6 = 0x107;
+
+    return 0x100;
 }

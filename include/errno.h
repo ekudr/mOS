@@ -3,6 +3,7 @@
 
 typedef enum {
     SUCCESS = 0,
+    ENOPERM,
     EINVAL,
     EAGAIN,     /* Try again */
     ENOMEM,

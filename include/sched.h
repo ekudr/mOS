@@ -6,6 +6,8 @@
 #include <memory.h>
 #include <list.h>
 #include <signals.h>
+#include <endpoint.h>
+#include <cap.h>
 
 register struct cpu *current_cpu __asm__("tp");
 
@@ -99,7 +101,7 @@ enum task_state
 struct kstack;
 struct mem_struct;
 struct mem_region;
-
+struct ipc_msg;
 /*
  * Per-process state
  */
@@ -131,8 +133,13 @@ typedef struct task
 
     // Task list links
     list_head_t         tasklist;
-    uint64_t            irq_flag;
-    void                *irq_handler;
+//    uint64_t            irq_flag;
+//    void                *irq_handler;
+
+    struct spinlock     cap_lock;
+    cap_entry_t         caps[MAX_CAPS];
+    struct spinlock     rep_lock;
+    struct ipc_msg      *replay;
 
     struct signal_hand   *sighand;
 
@@ -175,6 +182,8 @@ void sched_set_task_killed(task_t *t);
 int sched_get_task_killed(task_t *t);
 void sched_task_yield(void);
 void sched_task_wakeup(void *chan);
+void sched_wakeup(task_t *t);
+void sched_sleep();
 void sched_task_sleep(void *chan, struct spinlock *lk);
 void sched_task_exit(int status);
 int sched_alloc_pid(void);

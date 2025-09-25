@@ -186,6 +186,9 @@ load_servers(void)
 //    debug("Servers entris starts at 0x%lX\n", entry);
     
     for(int n = 0; n < hdr->nfiles; n++){
+//        if (strcmp(entry[n].name, "nameserver")) {
+//            debug("This is it!!!!\n");
+//        }
         printf("   %s ", entry[n].name);
 //        debug("[LOADER] %d server %s %d bytes at 0x%lX\n", n, entry[n].name, 
 //           entry[n].len, (uint64_t)_servers_img + entry[n].offset);

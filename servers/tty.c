@@ -1,5 +1,5 @@
 #include <common.h>
-#include <ipc.h>
+#include <libsys/ipc.h>
 #include <memory.h>
 #include <string.h>
 #include <riscv.h>
@@ -9,6 +9,8 @@
 //#include <sys/types.h>
 #include <mosstd.h>
 #include <signals.h>
+#include <nameserver.h>
+#include <cap.h>
 
 #include "qmsg.h"
 
@@ -201,6 +203,18 @@ void irq_handler(uint32_t sig, uint64_t irq)
 
 }
 
+void init_server(void)
+{
+    int cap = create_capability(CAP_FASTCALL, CRIGHT_RCV | CRIGHT_SND | CRIGHT_GRANT);
+    debug("TTY created cap %d\n", cap);
+    int ret = ns_register_cap(cap, "tty0", CRIGHT_SND | CRIGHT_GRANT);
+    if (ret < 0) {
+        debug("PANIC TTY");
+        for (;;);
+    }
+
+}
+
 int main()
 {
     uint64_t dmkey  = 0x0152474E4D564544;    // DEVICE MANAGER queue key
@@ -209,6 +223,7 @@ int main()
     uint64_t dmqid  = 0;
     dm_msg_t *msg;
     
+    init_server();
 
     char *hello = "Hello world\r\n";
 

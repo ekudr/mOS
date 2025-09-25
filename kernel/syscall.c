@@ -91,6 +91,14 @@ static uint64_t (*syscalls[])(void) = {
     [SYS_sig_act]   = sys_act_sig,    
     [SYS_sig_snd]   = sys_snd_sig,
     [SYS_sig_ret]   = usersigret,
+    [SYS_ipc_snd]   = sys_ipc_snd,
+    [SYS_ipc_rcv]   = sys_ipc_rcv,
+    [SYS_ipc_rpl]   = sys_ipc_rpl,
+    [SYS_ipc_call]   = sys_ipc_cll,
+    [SYS_endpt_crt] = sys_endpt_creat,
+    [SYS_cap_garnt] = sys_cap_grnt,
+    [SYS_cap_crt]   = sys_cap_create,
+    [SYS_fast_call] = sys_fast_call,
 
 };
 

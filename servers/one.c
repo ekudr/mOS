@@ -1,5 +1,5 @@
 #include <common.h>
-#include <ipc.h>
+#include <libsys/ipc.h>
 #include <memory.h>
 #include <string.h>
 #include <riscv.h>
@@ -8,6 +8,8 @@
 
 #include <sys/types.h>
 #include <mosstd.h>
+#include <cap.h>
+#include <nameserver.h>
 
 #include "qmsg.h"
 
@@ -24,11 +26,6 @@ struct stream{
 
 struct stream *buffer;
 
-void irq_handler(uint32_t sig, uint64_t irq)
-{
-    debug("[TASK ONE] irq handler sig %d irq %d\n", sig, irq);
-//    signal_return();
-}
 
 int main()
 {
@@ -42,7 +39,10 @@ int main()
     pid = getpid();
 
     debug("One App test\n");
-//    signal_action(1, irq_handler);
+
+    
+    
+
     
     do {
        qid = shmget(qkey, 0, IPC_EXIST);
@@ -60,7 +60,12 @@ int main()
         }
     }
 
-    
+        int cap = 0;
+    do {
+        cap = ns_lookup_cap("tty0");
+
+    } while (cap <= 0);
+    debug("TTY found cap %d\n", cap);
 
     for(;;);
 }

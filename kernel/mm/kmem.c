@@ -187,7 +187,7 @@ kmem_free(void *ptr)
 //    debug("[KMEM] slub nextfree 0x%lX\n",slub->nextfree);
     if(slub->slub_cache == NULL)
         goto not_slub;
-   debug("############ Free block 0x%lX  slub 0x%lX size %d\n", ptr, slub, slub->slub_cache->size);        
+//   debug("############ Free block 0x%lX  slub 0x%lX size %d\n", ptr, slub, slub->slub_cache->size);        
     acquire(&slub->slub_cache->lock);
     addr = (uintptr_t*)ptr;
     *addr = (uintptr_t)slub->nextfree;

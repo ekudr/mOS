@@ -4,6 +4,7 @@
 #include <mmu.h>
 #include <trap.h>
 #include <khash.h>
+#include <cap.h>
 
 struct cpu cpus[NCPUS];
 
@@ -12,6 +13,9 @@ task_manager_t g_taskmanager;
 task_manager_t *gp_tm;
 
 static khash_table_t *task_table;
+
+// Nameserver's endpoint object
+endpoint_t  *ns_ep;
 
 /*
  * Scheduler initialization
@@ -77,6 +81,34 @@ void sched_task_sleep(void *chan, struct spinlock *lk)
 }
 
 /*
+ * 
+ * 
+ */
+void sched_sleep()
+{
+    task_t *t = mytask();
+
+    // Must acquire t->lock in order to
+    // change t->state and then call sched.
+    // Once we hold t->lock, we can be
+    // guaranteed that we won't miss any wakeup
+    // (wakeup locks t->lock),
+    // so it's okay to release lk.
+
+    acquire(&t->lock); // DOC: sleeplock1
+//    debug("task %d going SLEEP\n", t->pid);
+    // Go to sleep.
+    t->state = SLEEPING;
+ 
+//    debug("[SCHED] Task %d sleep\n", t->pid);
+    sched_to_scheduler();
+    release(&t->lock);
+
+
+ 
+}
+
+/*
  * Wake up all processes sleeping on chan.
  * Must be called without any t->lock.
  */
@@ -92,12 +124,31 @@ void sched_task_wakeup(void *chan)
         if (t != mytask())
         {
             acquire(&t->lock);
+
             if (t->state == SLEEPING && t->chan == chan)
             {
                 t->state = RUNNABLE;
+//                debug("[SCHED] wake up task %d\n", t->pid);
             }
             release(&t->lock);
         }
+    }
+}
+
+/*
+ * Wake up task sleeping.
+ * Must be called without any t->lock.
+ */
+void sched_wakeup(task_t *t)
+{
+    if (t != mytask()) {
+        acquire(&t->lock);
+
+        if (t->state == SLEEPING) {
+            t->state = RUNNABLE;
+//            debug("[SCHED] wake up task %d\n", t->pid);
+        }
+        release(&t->lock);
     }
 }
 
@@ -257,7 +308,7 @@ void scheduler(void)
         {
             t = list_entry(pos, task_t, tasklist);
 //            debug("[SCHED] check task 0x%lX\n", t);
-//            debug("%d ", t->pid);
+//            debug("[SCHED] check task %d state %d\n", t->pid, t->state);
             acquire(&t->lock);
             if (t->state == RUNNABLE)
             {
@@ -336,6 +387,8 @@ int sched_taskfree(task_t *t)
     // Delete from list
     list_del(&t->tasklist);
     
+    // ??? Add free of mm obj, endpoints
+
     // Free page tables
     if (t->trapframe)
         pgfree(DA2PPN(t->trapframe));
@@ -395,6 +448,26 @@ sched_taskalloc(void)
         sched_taskfree(t);
         return 0;
     }
+
+    // Create task's own endpoint as cap 0
+    endpoint_t *ep = malloc(sizeof(endpoint_t));
+    if (ep == NULL)
+        panic("cannot create endpoint");
+    
+    initlock(&ep->lock, "endpoint");
+    ep->count = 0;
+    list_init(&ep->msglist);
+    ep->owner = t;
+    cap_install(t, ep, CAP_ENDPOINT, CRIGHT_SND | CRIGHT_RCV);
+
+    if (unlikely(t->pid == 1))
+        ns_ep = ep;
+
+    initlock(&t->rep_lock, "ipc replay");
+    t->replay = NULL;
+
+    // Add name server endpoint as cap 1
+    cap_install(t, ns_ep, CAP_ENDPOINT, CRIGHT_SND);
 
     // Set up new context to start executing at forkret,
     // which returns to user space.

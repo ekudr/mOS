@@ -40,3 +40,9 @@ size_t strlen(const char *str)
 
     return ret;
 }
+
+int strcmp(const char *l, const char *r)
+{
+	for (; *l==*r && *l; l++, r++);
+	return *(unsigned char *)l - *(unsigned char *)r;
+}

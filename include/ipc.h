@@ -32,15 +32,25 @@ struct mqueue
 
 typedef struct mqueue mqueue_t;
 
-
+#define IPC_CALL 1
+#define IPC_REPL 2
 
 typedef struct ipc_msg
 {
-    uint64_t type;
+    uint64_t    type;
     list_head_t mlist;
+    task_t      *sender;
     char message[1];
 }ipc_msg_t;
 
+#define MAX_FC_ARS  6
+typedef struct ipc_fastcall_msg
+{
+//    uint64_t    type;
+    list_head_t mlist;
+    task_t      *sender;
+    uint64_t    arg[MAX_FC_ARS];
+}ipc_fastcall_msg_t;
 
 int ipc_init(void);
 uint64_t ipc_get_msg(uint64_t qkey, uint64_t flags);
@@ -49,5 +59,11 @@ int ipc_rcv_msg(uint64_t qid, uint64_t type, uintptr_t ubuf, uint64_t size, uint
 
 uint64_t ipc_get_shm(uint64_t key, size_t size, uint64_t flags);
 void *ipc_att_shm(uint64_t shmid, const void *addr, int flags);
+
+
+uint64_t sys_ipc_call(task_t *t, uint32_t id, uint64_t umsg, uint64_t urep, uint64_t size);
+uint64_t sys_ipc_recv(task_t *t, uint32_t id, uint64_t uaddr, uint64_t size);
+uint64_t sys_ipc_send(task_t *t, uint32_t id, uint64_t uaddr, uint64_t size);
+uint64_t sys_ipc_replay(task_t *t, uint64_t id, uint64_t uaddr, uint64_t size);
 
 #endif /* __IPC_H__ */

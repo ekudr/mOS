@@ -9,7 +9,7 @@ extern "C" {
 
 pid_t getpid(void);
 
-
+int debug(const char *format, ...);
 
 #ifdef __cplusplus
 }

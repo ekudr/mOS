@@ -38,11 +38,16 @@ libc_string = [
     'string/strcmp.c',
     'string/stpcpy.c',
     'string/strcpy.c',
+    'string/strncpy.c',
     'string/ffs.S',
 ]
 
 libc_mosstd = [
     'mosstd/getpid.c',
+    'mosstd/cap.c',
+    'mosstd/ipc.c',
+    'mosstd/fastcall.c',
+    'mosstd/nameserver.c',
 ]
 
 libc_malloc = [
