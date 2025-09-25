@@ -23,5 +23,12 @@ typedef struct fastcall
     uint64_t    count;
 } fastcall_t;
 
+typedef struct replay
+{
+    struct kobject  ko;
+    spinlock_t      lock;
+    struct task     *sender; // request sender
+
+} replay_t;
 
 #endif /* __ENDPOINT_H__ */

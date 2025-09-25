@@ -19,6 +19,7 @@ typedef struct cap_entry
 } cap_entry_t;
 
 int cap_install(struct task *t, void *obj, cap_type_t type, uint32_t rights);
+int cap_replay_install(struct task *task, struct task *server);
 cap_entry_t *cap_lookup(struct task *t, uint32_t id);
 void cap_free(struct task *t, uint32_t id);
 int sys_capability_create(struct task *t, cap_type_t type, uint32_t rights);

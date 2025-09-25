@@ -40,6 +40,7 @@ typedef struct ipc_msg
     uint64_t    type;
     list_head_t mlist;
     task_t      *sender;
+    int         replay;
     char message[1];
 }ipc_msg_t;
 

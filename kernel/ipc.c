@@ -34,6 +34,12 @@ inline void queue_push(struct endpoint *ep, struct ipc_msg *msg)
     acquire(&ep->lock);
     list_add_tail(&ep->msglist, &msg->mlist);
     ep->count++;
+    
+    // wake up owner of endpoint
+//    sched_wakeup(ep->owner);
+    sched_task_wakeup(ep);
+
+    // sender go sleep
     release(&ep->lock);
 }
 
@@ -344,11 +350,14 @@ uint64_t sys_ipc_recv(task_t *t, uint32_t id, uint64_t uaddr, uint64_t size)
 //     debug("[IPC] Receive cap %d msg 0x%lX size %d\n", id, uaddr, size);
 //    debug("[IPC_RCV] message 1 0x%lX = 0x%lX\n", &msg, msg);;
 
+    if (size == 0 || uaddr == 0)
+        return -EINVAL;
+    
     cap_entry_t *ce = cap_lookup(t, id);
 //    debug("[IPC_RCV] cap lookup %d ce 0x%lX ep 0x%lX msg 0x%lX\n", id, ce, ce->obj, msg);
 //    debug("[IPC_RCV] cap valid %d type 0x%lX rights %d\n", ce->valid, ce->type, ce->rights);
     if (!ce || ce->type != CAP_ENDPOINT || !(ce->rights & CRIGHT_RCV)){
-        return -EINVAL;
+        return -EPERM;
     }      
    
     endpoint_t *ep = (endpoint_t *)ce->obj;
@@ -363,16 +372,11 @@ uint64_t sys_ipc_recv(task_t *t, uint32_t id, uint64_t uaddr, uint64_t size)
     msg = queue_pop(ep);
     release(&ep->lock);
 
-    if (msg == NULL)
-        return -EINVAL;
-
-    if (size) {
-       if (mmu_user_copyout(t->pagetable, uaddr, (char *)msg->message, size) < 0)
-            return -EINVAL;
-    }
+    if (mmu_user_copyout(t->pagetable, uaddr, (char *)msg->message, size) < 0)
+        return -EIO; //??? check error 
 
     // park message in caps for replay
-    int rpl = cap_install(t, msg, CAP_REPLAY, CRIGHT_SND);
+    int rpl = msg->replay;
 
     return rpl;
 }
@@ -394,30 +398,24 @@ uint64_t sys_ipc_call(task_t *t, uint32_t id, uint64_t umsg, uint64_t urep, uint
     } else {
         return -EINVAL;
     }
-/*
-    char *buffer = (char *)msg->message;
-    for(int i=0; i<size; i++){
-        debug("0x%lX ",buffer[i]);
-    }
-*/
+
     cap_entry_t *ce = cap_lookup(t, id);
 //    debug("[IPC_SND] cap lookup %d ce 0x%lX ep 0x%lX msg 0x%lX\n", id, ce, ce->obj, msg);
-    if (!ce || msg == NULL || ce->type != CAP_ENDPOINT || !(ce->rights & CRIGHT_SND))
-        return -ENOPERM;
+    if (!ce || ce->type != CAP_ENDPOINT || !(ce->rights & CRIGHT_SND))
+        return -EPERM;
     
     endpoint_t *ep = (endpoint_t *)ce->obj;
-//  task_t *receiver = ep->owner;
+
+     int rpl = cap_replay_install(t, ep->owner);
+     msg->replay = rpl;   
+
     queue_push(ep, msg);
 
     t->replay = msg;
 
-    // wake up owner of endpoint
-//    sched_wakeup(ep->owner);
-    sched_task_wakeup(ep);
-    // sender go sleep
 //    sched_sleep();
     acquire(&t->rep_lock);
-//    debug("WAIT FOR 0x%lX\n", msg);
+    debug("Task %d wait for 0x%lX\n", t->pid, msg);
     sched_task_sleep(msg, &t->rep_lock);     
     release(&t->rep_lock);
 //    debug("Waked up for 0x%lX\n", msg);
@@ -449,25 +447,34 @@ uint64_t sys_ipc_call(task_t *t, uint32_t id, uint64_t umsg, uint64_t urep, uint
  */
 uint64_t sys_ipc_replay(task_t *t, uint64_t id, uint64_t uaddr, uint64_t size)
 {
+    if (size == 0 || uaddr == 0)
+        return -EINVAL;
+   
+
     cap_entry_t *ce = cap_lookup(t, id);
     if (!ce || ce->type != CAP_REPLAY || !(ce->rights & CRIGHT_SND)){
-        return -EINVAL;
-    }   
-    ipc_msg_t *msg = (ipc_msg_t *)ce->obj;
+        return -EPERM;
+    }        
+
+    replay_t *r = (replay_t *)ce->obj;
+    if (r->ko.type != KO_REPLAY)
+        return -EINVAL;    
+
+    ipc_msg_t *msg = r->sender->replay;
 //    debug("[IPC_RPL] replay cap %d msg 0x%lX size %d\n", id, uaddr, size);
     if (msg == NULL)
         return -ENOENT;
 //    debug("[IPC] reply message at 0x%lX\n", msg);
-    task_t *sndr = msg->sender;
-    if (size) {
-        if (mmu_user_copyin(t->pagetable, (char *)&msg->message, uaddr, size) < 0){
-            return -EINVAL;
-        }
+    task_t *sndr = r->sender;
+
+    if (mmu_user_copyin(t->pagetable, (char *)&msg->message, uaddr, size) < 0){
+        return -EINVAL;
     }
 
     msg->type = IPC_REPL;
 //    sched_wakeup(sndr);
-//    debug("WAKE UP FOR 0x%lX\n", msg);
+    debug("WAKE UP FOR 0x%lX\n", msg);
+
     sched_task_wakeup(msg);
     // free cap
     cap_free(t, id);

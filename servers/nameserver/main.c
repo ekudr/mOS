@@ -40,7 +40,8 @@ int main()
                 
                 msg.type = NS_REPLAY;
                 msg.cap_id = 0;
-                ipc_replay(rpl_id, &msg, sizeof(msg));
+                int ret = ipc_replay(rpl_id, &msg, sizeof(msg));
+//                debug("Replay ret %d\n", ret);
             } else {
                 msg.type = NS_REPLAY;
                 msg.cap_id = -1;

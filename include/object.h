@@ -14,7 +14,7 @@ typedef struct kobject
 {
     uint32_t    type;
     uint64_t    refcount;
-    uint32_t    rights;
+//    uint32_t    rights;
 } kobject_t;
 
 inline kobject_t *ko_init(kobject_t *ko)
@@ -22,26 +22,26 @@ inline kobject_t *ko_init(kobject_t *ko)
     if (ko == NULL)
         return NULL;
     ko->refcount = 1;
-    ko->rights   = 0;
+//    ko->rights   = 0;
     ko->type     = 0;
     return ko;
 }
 
 inline kobject_t *ko_get(kobject_t *ko)
 {
-    __atomic_fetch_add(&ko->refcount, 1, __ATOMIC_ACQ_REL);
+    if (ko) __atomic_fetch_add(&ko->refcount, 1, __ATOMIC_ACQ_REL);
     return ko;
 }
 
 void mfree(void *ptr);
 
-// inline void put_ko(kobject_t *ko, void (*destroy)(kobject_t *))
-inline void ko_put(kobject_t *ko)
+inline void ko_put(kobject_t *ko, void (*destroy)(kobject_t *))
 {
+    if (ko == NULL) return;
     if (__atomic_fetch_sub(&ko->refcount, 1, __ATOMIC_ACQ_REL) == 1) {
         //destroying if last one
-        // should be destroy(ko);
-        mfree(ko);
+        if (destroy) destroy(ko);
+        else mfree(ko);
     }
 }
 

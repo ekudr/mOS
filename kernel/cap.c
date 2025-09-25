@@ -28,21 +28,55 @@ cap_entry_t *cap_lookup(task_t *t, uint32_t id)
 {
     if (id < 0 || id >= MAX_CAPS)
         return NULL;
-    if (t->caps[id].valid == false)
+
+    acquire(&t->cap_lock);        
+    if (t->caps[id].valid == false){
+        release(&t->cap_lock);
         return NULL;
-    return &t->caps[id];
+    }
+    cap_entry_t *e = &t->caps[id];
+    release(&t->cap_lock);
+
+    return e;
 }
 
 void cap_free(task_t *t, uint32_t id)
-{
+{    
     if (id < 0 || id >= MAX_CAPS)
        return; 
+
+    acquire(&t->cap_lock);        
+    if (t->caps[id].valid == false){
+        release(&t->cap_lock);
+        return;
+    }    
+    
+    kobject_t *obj = t->caps[id].obj;
     t->caps[id].valid = false;
-    t->caps[id].obj = 0;
-/*    
-    t->caps[id].type = 0;        
+    t->caps[id].obj = NULL;
+    t->caps[id].type = CAP_NONE;        
     t->caps[id].rights = 0;
-*/    
+    release(&t->cap_lock);
+
+    if (obj) ko_put(obj, NULL);
+}
+
+/*
+ * Create transient reply cap i server's cap tabble.
+ * Return cap_id
+ */
+int cap_replay_install(task_t *task, task_t *server)
+{
+    replay_t *r = (replay_t *)ko_init(malloc(sizeof(replay_t)));
+    r->ko.type = KO_REPLAY;
+    r->sender = task;
+
+    int cap_id = cap_install(server, r, CAP_REPLAY, CRIGHT_SND);
+    if (cap_id < 0) {
+        ko_put(&r->ko, NULL);
+        return -ENOSPC;
+    }
+    return cap_id;
 }
 
 int sys_endpoint_create(task_t *t, uint32_t rights)
