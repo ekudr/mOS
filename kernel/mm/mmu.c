@@ -2,6 +2,13 @@
 #include <mmu.h>
 #include <memory.h>
 #include <sched.h>
+#include <spinlock.h>
+
+spinlock_t mmu_lock __ALIGN(16);
+
+// static int (*__sbi_rfence)(int fid,
+// 			   unsigned long start, unsigned long size,
+// 			   unsigned long arg4, unsigned long arg5);
 
 pte_t *
 mmu_walk(pagetable_t pagetable, uint64_t va, int alloc)
@@ -71,15 +78,15 @@ int mmu_map_pages(pagetable_t pagetable, uint64_t va, uint64_t size, uint64_t pa
      */
 //    debug("[MMU] map pt 0x%lX va 0x%lX size 0x%lX pa 0x%lX\n", pagetable, va, size, pa);
 
-    //    if (perm & PTE_LEAF_MASK)
-    //    {
-    perm |= (PTE_A | PTE_D);
-    //    }
-    //  else
-    //    {
-    //      perm &= ~(PTE_A | PTE_D | PTE_U);
-    //    }
-
+        if (perm & PTE_LEAF_MASK)
+        {
+            perm |= (PTE_A | PTE_D);
+        }
+      else
+        {
+          perm &= ~(PTE_A | PTE_D | PTE_U);
+        }
+    acquire(&mmu_lock);
     a = PGROUNDDOWN(va);
     last = PGROUNDDOWN(va + size - 1);
     for (;;)
@@ -103,6 +110,8 @@ int mmu_map_pages(pagetable_t pagetable, uint64_t va, uint64_t size, uint64_t pa
         a += PAGE_SIZE;
         pa += PAGE_SIZE;
     }
+    sbi_remote_sfence_vma(va, size);
+    release(&mmu_lock);
     return 0;
 }
 
@@ -448,4 +457,10 @@ void mmu_free_pagetable(pagetable_t pagetable)
     }
 //    debug("[MMU] free page table 0x%lX \n", DA2PA(pagetable));
     pgfree(DA2PPN(pagetable));
+}
+
+
+void mmu_init(void)
+{
+    initlock(&mmu_lock, "mmu");
 }

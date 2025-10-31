@@ -139,7 +139,7 @@ typedef struct task
     struct spinlock     cap_lock;
     cap_entry_t         caps[MAX_CAPS];
     struct spinlock     rep_lock;
-    struct ipc_msg      *replay;
+    struct ipc_msg      *replay_msg;
 
     struct signal_hand   *sighand;
 

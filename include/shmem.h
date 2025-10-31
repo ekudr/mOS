@@ -1,6 +1,8 @@
 #ifndef __SHMEM_H__
 #define __SHMEM_H__
 
+#include <object.h>
+
 struct task;
 struct shmem_block;
 
@@ -26,6 +28,7 @@ typedef struct shmem_page
 
 typedef struct shmem_block
 {
+    kobject_t   ko;
     size_t      size;
     size_t      npages;
     struct shmem_page *head;
@@ -33,5 +36,7 @@ typedef struct shmem_block
 
 shmqueue_t *shmem_create(uint64_t key, size_t size, uint64_t flags);
 shmqueue_t *shmem_lookup(uint64_t shmid);
+int shmem_alloc_memory(shmem_block_t * shmb);
+int shmem_free_memory(shmem_block_t * shmb);
 kerrno_t shmem_init(void);
 #endif /* __SHMEM_H__ */

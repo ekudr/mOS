@@ -1,6 +1,6 @@
 #include <common.h>
 #include <libsys/ipc.h>
-#include <memory.h>
+//#include <memory.h>
 #include <string.h>
 #include <riscv.h>
 
@@ -11,11 +11,15 @@
 #include <signals.h>
 #include <nameserver.h>
 #include <cap.h>
-
-#include "qmsg.h"
+#include <ipc.h>
+#include <vfs.h>
+#include <devman.h>
+#include <tty.h>
 
 void irq_handler(uint32_t sig, uint64_t irq);
 signal_action_t irqhand;
+
+int cap = 0;
 
 // the UART control registers.
 // some have different meanings for
@@ -184,12 +188,12 @@ uart_init(void)
     irq_set(UART0_IRQ, 0);
     return 0;
 }
-
+/*
 dm_device_t tty_dev = {
     .type = D_TTY,
     .name = "tty0",
 };
-
+*/
 uint64_t pid;   // Global PID of the task
 
 void irq_handler(uint32_t sig, uint64_t irq)
@@ -205,29 +209,40 @@ void irq_handler(uint32_t sig, uint64_t irq)
 
 void init_server(void)
 {
-    int cap = create_capability(CAP_FASTCALL, CRIGHT_RCV | CRIGHT_SND | CRIGHT_GRANT);
-    debug("TTY created cap %d\n", cap);
-    int ret = ns_register_cap(cap, "tty0", CRIGHT_SND | CRIGHT_GRANT);
+    cap = create_capability(CAP_ENDPOINT, CRIGHT_RCV | CRIGHT_SND | CRIGHT_GRANT);
+    debug("TTY driver created cap %d\n", cap);
+
+//    struct dm_register tty;
+ 
+    int ret = devman_register("tty0", cap);    
+//    debug("[TTY] Register status %d\n", ret);
     if (ret < 0) {
         debug("PANIC TTY");
         for (;;);
     }
 
+    int vfs = vfs_open("/dev/tty0");
+    debug("[TTY] open vfs returned %d\n", vfs);
+    if (vfs < 0) {
+        // ??? transfer cap top vfs
+        vfs = vfs_create("/dev/tty0", VFS_DEVICE, cap);
+    }
+    debug("[TTY] create vfs returned %d\n", vfs);
 }
 
 int main()
 {
-    uint64_t dmkey  = 0x0152474E4D564544;    // DEVICE MANAGER queue key
+   // uint64_t dmkey  = 0x0152474E4D564544;    // DEVICE MANAGER queue key
     uint64_t qkey   = 0x01204E4F43535953;
     uint64_t qid    = 0;
-    uint64_t dmqid  = 0;
-    dm_msg_t *msg;
+   // uint64_t dmqid  = 0;
+   // dm_msg_t *msg;
     
     init_server();
 
-    char *hello = "Hello world\r\n";
+  //  char *hello = "Hello world\r\n";
 
-    pid = getpid();
+   pid = getpid();
 
     debug("TTY driver ver. 0.0.1\n");
     
@@ -239,13 +254,13 @@ int main()
     buffer = (struct stream *)shmat(qid, NULL, 0);
     debug("Shmem addr 0x%lX\n", buffer);
     memset(buffer, 0, 0x2000);
-
+/*
     do {
        dmqid = get_msg(dmkey, IPC_EXIST);
     } while (!dmqid);
 
     msg = malloc(sizeof(msg));
-    msg->type = DM_REGISTER_DEVICE;
+    msg->type = DM_REGISTER;
     msg->sender = pid;
     
     memcpy(&msg->msg.device, &tty_dev, sizeof(tty_dev));
@@ -259,11 +274,16 @@ int main()
     debug("Response from %d: type %d status %d\n", msg->sender, msg->type, msg->msg.resp);
     
     debug("Size of stream 0x%lX\n", sizeof(struct stream));
-
+*/
     if (uart_init() != 0)
         panic("[UART] init error");  
 
     for(;;){
+        struct tty_message msg;
+        if (!(ipc_receive(cap, &msg, sizeof(msg), IPC_NOWAIT) < 0)) {
+            if (msg.type == TTY_PUT_STRING) uart_puts(msg.message);
+        }
+            
         for (int i=0; i<0x20; i++){
             if (buffer[i].flag > 0){
                 uart_puts(buffer[i].buf);
@@ -274,8 +294,5 @@ int main()
     }
 
 
-    uart_puts(hello);
-
-    for(;;);
     return 0;
 }

@@ -7,6 +7,5 @@ char *strncpy(char *dest, const char *src, size_t count)
 	while (count-- && *src != '\0') {
 		*dest++ = *src++;
 	}
-
 	return ret;
 }

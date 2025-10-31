@@ -33,12 +33,15 @@ libc_string = [
     'string/memmem.c',
     'string/memmove.S',
     'string/memset.S',
+    'string/memrchr.c',
     'string/strchrnul.c',
     'string/strchr.c',
     'string/strcmp.c',
     'string/stpcpy.c',
     'string/strcpy.c',
     'string/strncpy.c',
+    'string/strrchr.c',
+    'string/strlen.c',
     'string/ffs.S',
 ]
 
@@ -47,7 +50,10 @@ libc_mosstd = [
     'mosstd/cap.c',
     'mosstd/ipc.c',
     'mosstd/fastcall.c',
+    'mosstd/devman.c',
     'mosstd/nameserver.c',
+    'mosstd/vfs.c',
+    'mosstd/console.c',
 ]
 
 libc_malloc = [

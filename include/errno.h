@@ -5,15 +5,18 @@ typedef enum {
     SUCCESS = 0,
     ENOPERM,
     EPERM,      /* Operation not permitted */
+    ECAPINVAL,  /* Invalid cap*/
     EINVAL,
     EAGAIN,     /* Try again */
     ENOMEM,
     EIO,
+    ETIMEOUT,
     EEXIST,
     ENOSPC,     /* No Space */
     ENOENT,     /* No Entry, not Exist */
     ENOSUPPORT,
     ENOALIGN,
+    EBUSY,
 } kerrno_t;
 
 

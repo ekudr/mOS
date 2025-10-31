@@ -13,7 +13,7 @@ uvm_alloc_mmreg(task_t *task, uint64_t vaddr, uint64_t size, uint64_t type, int 
     list_head_t     *pos;
     mem_reg_t       *mreg, *mreg_stack = NULL;
     task_t          *t;
-    uint64_t        a, ppn;
+//    uint64_t        a, ppn;
     mem_struct_t    *mm;
     pagetable_t     pgtable;
     bool            exist = false;
@@ -120,11 +120,11 @@ mem_reg_t*
 uvm_alloc_vmem(task_t *task, uint64_t vaddr, size_t size)
 {
     list_head_t     *pos;
-    mem_reg_t       *mreg, *mreg_stack = NULL;
+    mem_reg_t       *mreg;
     task_t          *t;
-    uint64_t        a, ppn;
+//    uint64_t        a, ppn;
     mem_struct_t    *mm;
-    pagetable_t     pgtable;
+//    pagetable_t     pgtable;
     bool            exist = false;
 
 
@@ -134,12 +134,12 @@ uvm_alloc_vmem(task_t *task, uint64_t vaddr, size_t size)
 
     t           = task;    
     mm          = t->mm;
-    pgtable     = mm->pagetable;
+//    pgtable     = mm->pagetable;
 
     acquire(&mm->lock);
 //    debug("[UVM] Alloc mem reg task %d va 0x%lX size 0x%lX type 0x%lX\n",
 //            t->pid,vaddr, size, type);
-    if (vaddr == NULL){
+    if (!vaddr){
         vaddr = __atomic_fetch_add(&mm->mmap_addr, size, __ATOMIC_ACQ_REL);
     } else {
         // search if addr is already allocated
@@ -189,20 +189,16 @@ mem_reg_t *uvm_user_memmap(task_t *task, uint64_t addr, uint64_t size, uint64_t 
 {
     pagetable_t pgtable;
 
-    if (size == 0)
+    if (!size || !flags)
         return NULL;
 
-    // ??? should it be default settings    
-    if (flags == 0)
+    if ((flags & MAP_MEMIO) && (!paddr))
         return NULL;
 
     // Addressess should be page aligned
     if((addr % PAGE_SIZE != 0) || (paddr % PAGE_SIZE != 0)){
         return NULL;
     }
-
-    if ((flags & MAP_MEMIO) && (paddr == NULL))
-        return NULL;
 
     size = PGROUNDUP(size); 
     

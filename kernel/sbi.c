@@ -13,6 +13,10 @@
 
 
 static void (*__sbi_set_timer)(uint64_t stime);
+static void (*__sbi_send_ipi)(unsigned int cpu);
+static int (*__sbi_rfence)(int fid,
+			   unsigned long start, unsigned long size,
+			   unsigned long arg4, unsigned long arg5);
 
 /* default SBI version is 0.1 */
 unsigned long sbi_version = 0x1; 
@@ -144,7 +148,7 @@ int sbi_debug_console_write(const char *bytes, unsigned int num_bytes)
 
 	base_addr = DA2PA(bytes);
 
-//    debug("Phys addr 0x%lX\n", (uint64_t)base_addr);
+//    early_printf("Phys addr 0x%lX\n", (uint64_t)base_addr);
 
 #if __riscv_xlen == 32
 		ret = sbi_ecall(SBI_EXT_DBCN, SBI_EXT_DBCN_CONSOLE_WRITE,
@@ -156,10 +160,134 @@ int sbi_debug_console_write(const char *bytes, unsigned int num_bytes)
 				num_bytes, base_addr, 0, 0, 0, 0);
 #endif
 
-//    debug("SBI ret 0x%lX:0x%lX\n", ret.error, ret.value);
+//    early_printf("SBI ret 0x%lX:0x%lX\n", ret.error, ret.value);
 	if (ret.error < 0)
 		return -EIO;
 	return ret.error ? -EIO : ret.value;
+}
+
+static void __sbi_send_ipi_v01(unsigned int cpu)
+{
+	printf("IPI extension is not available in SBI v01\n");
+}
+
+static int __sbi_rfence_v01(int fid,
+			    unsigned long start, unsigned long size,
+			    unsigned long arg4, unsigned long arg5)
+{
+	printf("remote fence extension is not available in SBI\n");
+
+	return 0;
+}
+
+static void __sbi_send_ipi_v02(unsigned int cpu)
+{
+	int result;
+	struct sbiret ret = {0};
+
+	ret = sbi_ecall(SBI_EXT_IPI, SBI_EXT_IPI_SEND_IPI,
+			1UL, CPU2HARTID(cpu), 0, 0, 0, 0);
+	if (ret.error) {
+		result = ret.error;
+		printf("%s: hbase = [%lu] failed (error [%d])\n",
+			__func__, CPU2HARTID(cpu), result);
+	}
+}
+
+static int __sbi_rfence_v02_call(unsigned long fid, unsigned long hmask,
+				 unsigned long hbase, unsigned long start,
+				 unsigned long size, unsigned long arg4,
+				 unsigned long arg5)
+{
+	struct sbiret ret = {0};
+	int ext = SBI_EXT_RFENCE;
+	int result = 0;
+
+	switch (fid) {
+	case SBI_EXT_RFENCE_REMOTE_FENCE_I:
+		ret = sbi_ecall(ext, fid, hmask, hbase, 0, 0, 0, 0);
+		break;
+	case SBI_EXT_RFENCE_REMOTE_SFENCE_VMA:
+		ret = sbi_ecall(ext, fid, hmask, hbase, start,
+				size, 0, 0);
+		break;
+	case SBI_EXT_RFENCE_REMOTE_SFENCE_VMA_ASID:
+		ret = sbi_ecall(ext, fid, hmask, hbase, start,
+				size, arg4, 0);
+		break;
+
+	case SBI_EXT_RFENCE_REMOTE_HFENCE_GVMA:
+		ret = sbi_ecall(ext, fid, hmask, hbase, start,
+				size, 0, 0);
+		break;
+	case SBI_EXT_RFENCE_REMOTE_HFENCE_GVMA_VMID:
+		ret = sbi_ecall(ext, fid, hmask, hbase, start,
+				size, arg4, 0);
+		break;
+	case SBI_EXT_RFENCE_REMOTE_HFENCE_VVMA:
+		ret = sbi_ecall(ext, fid, hmask, hbase, start,
+				size, 0, 0);
+		break;
+	case SBI_EXT_RFENCE_REMOTE_HFENCE_VVMA_ASID:
+		ret = sbi_ecall(ext, fid, hmask, hbase, start,
+				size, arg4, 0);
+		break;
+	default:
+		printf("unknown function ID [%lu] for SBI extension [%d]\n",
+		       fid, ext);
+		result = -EINVAL;
+	}
+    
+	if (ret.error) {
+		result = ret.error;
+		printf("%s: hbase = [%lu] hmask = [0x%lx] failed (error [%d])\n",
+		       __func__, hbase, hmask, result);
+	}
+
+	return result;
+}
+
+static int __sbi_rfence_v02(int fid,
+			    unsigned long start, unsigned long size,
+			    unsigned long arg4, unsigned long arg5)
+{
+	unsigned long hartid, hmask = 0, hbase = 0;
+	int result;
+    hbase = 0;
+    for (int i = 0; i < NCPUS; i++) {
+        hartid = CPU2HARTID(i);
+        if (hartid != current_cpu->hartid) {
+            hmask |= BIT(hartid);
+        }
+    }
+
+
+	if (hmask) {
+		result = __sbi_rfence_v02_call(fid, hmask, hbase,
+					       start, size, arg4, arg5);
+		if (result)
+			return result;
+	}
+
+	return 0;
+}
+
+int sbi_remote_hfence_vvma(unsigned long start, unsigned long size)
+{
+	return __sbi_rfence(SBI_EXT_RFENCE_REMOTE_HFENCE_VVMA,
+			     start, size, 0, 0);
+}
+
+
+
+int sbi_remote_sfence_vma(
+				unsigned long start,
+				unsigned long size)
+{
+
+		return __sbi_rfence(SBI_EXT_RFENCE_REMOTE_SFENCE_VMA,
+				    start, size, 0, 0);
+
 }
 
 void sbi_init (void) {
@@ -169,25 +297,38 @@ void sbi_init (void) {
 
     if (ret) sbi_version = ret;
 
-    debug("SBI detected version %d.%d\n", (sbi_version >> 24) & 0x7f, sbi_version & 0x7f);
+    early_printf("SBI detected version %d.%d\n", (sbi_version >> 24) & 0x7f, sbi_version & 0x7f);
 
 	if (sbi_probe_extension(SBI_EXT_TIME)) {
 		__sbi_set_timer = __sbi_set_timer_v02;
-		debug("SBI TIME extension detected\n");
+		early_printf("SBI TIME extension detected\n");
 	} else {
 		__sbi_set_timer = __sbi_set_timer_v01;
 	}
 
 	if (sbi_probe_extension(SBI_EXT_HSM)) {
 				
-		debug("SBI HSM extension detected\n");
+		early_printf("SBI HSM extension detected\n");
 		for(int i=0; i<NCPUS; i++){
-			debug("SBI HSM hart %d status %d\n", i, sbi_hsm_hart_get_status(CPU2HARTID(i)));
+			early_printf("SBI HSM hart %d status %d\n", i, sbi_hsm_hart_get_status(CPU2HARTID(i)));
 		}
 	}
 
+    if (sbi_probe_extension(SBI_EXT_IPI)) {
+        __sbi_send_ipi	= __sbi_send_ipi_v02;
+        early_printf("SBI IPI extension detected\n");
+    } else {
+        __sbi_send_ipi	= __sbi_send_ipi_v01;
+    }
+    if (sbi_probe_extension(SBI_EXT_RFENCE)) {
+        __sbi_rfence	= __sbi_rfence_v02;
+        early_printf("SBI RFENCE extension detected\n");
+    } else {
+        __sbi_rfence	= __sbi_rfence_v01;
+    }
+
     if (sbi_probe_extension(SBI_EXT_DBCN)) {
-        debug("SBI DBCN extension detected\n");
+        early_printf("SBI DBCN extension detected\n");
         sbi_debug_console_available = true;
     }
     
@@ -196,9 +337,9 @@ void sbi_init (void) {
 void sbi_hsm_info(void) {
 		if (sbi_probe_extension(SBI_EXT_HSM)) {
 				
-		printf("SBI HSM extension detected\n");
+		early_printf("SBI HSM extension detected\n");
 		for(int i=0; i<NCPUS; i++){
-			printf("SBI HSM hart %d status %d\n", i, sbi_hsm_hart_get_status(CPU2HARTID(i)));
+			early_printf("SBI HSM hart %d status %d\n", i, sbi_hsm_hart_get_status(CPU2HARTID(i)));
 		}
 	}
 }

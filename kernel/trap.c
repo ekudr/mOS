@@ -135,9 +135,8 @@ void kerneltrap()
 
     if ((which_dev = devintr()) == 0)
     {
-     
-        printf("scause %p\n", scause);
-        printf("sepc=%p stval=%p\n", r_sepc(), r_stval());
+        printf("HART %d trap: scause %p sepc=%p stval=%p\n", current_cpu->hartid,
+                scause, r_sepc(), r_stval());
         panic("kerneltrap");
     }
 /*

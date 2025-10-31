@@ -8,6 +8,7 @@
 
 pagetable_t early_pagetable;
 pagetable_t kernel_pagetable;
+uint64_t    kpgt;
 
 struct kernel_map kernel_map;
 
@@ -47,7 +48,7 @@ pte_t *
 early_mmu_walk(pagetable_t pagetable, uint64_t va, int alloc)
 {
     for(int vpn = 2; vpn > 0; vpn--) {
-//        debug("mmu walk lv %d va 0x%lX pg 0x%lX idx %d\n", vpn, va, pagetable, PX(vpn, va));
+//        early_printf("mmu walk lv %d va 0x%lX pg 0x%lX idx %d\n", vpn, va, pagetable, PX(vpn, va));
         pte_t *pte = &pagetable[PX(vpn, va)];
         if(*pte & PTE_V) {
             pagetable = (pagetable_t)PTE2PA(*pte);
@@ -55,7 +56,7 @@ early_mmu_walk(pagetable_t pagetable, uint64_t va, int alloc)
             if(!alloc || (pagetable = (pte_t*)get_page()) == 0)
                 return 0;
             memset((void *)pagetable, 0, PAGE_SIZE);
-//            debug("pg alloc 0x%lX\n", pagetable);
+//            early_printf("pg alloc 0x%lX\n", pagetable);
             *pte = PA2PTE(pagetable) | PTE_V;
         }
     }
@@ -67,7 +68,7 @@ early_vm_map(pagetable_t pagetable, uint64_t va, uint64_t size, uint64_t pa, uin
 {
     pte_t   *pte;
     uint64_t a,last;
-//    debug("Early map pt 0x%lX va 0x%lX size 0x%lX pa 0x%lX\n", pagetable, va, size, pa);
+//    early_printf("Early map pt 0x%lX va 0x%lX size 0x%lX pa 0x%lX\n", pagetable, va, size, pa);
     mmuflags |= (PTE_A | PTE_D);
 
     a = PGROUNDDOWN(va);
@@ -81,7 +82,7 @@ early_vm_map(pagetable_t pagetable, uint64_t va, uint64_t size, uint64_t pa, uin
         }
         
         *pte = PA2PTE(pa) | mmuflags | PTE_V;
-//        debug("Address 0x%lX pte 0x%lX pa 0x%lX\n", a, pte, PTE2PA(*pte));
+//        early_printf("Address 0x%lX pte 0x%lX pa 0x%lX\n", a, pte, PTE2PA(*pte));
         if(a == last)
             break;
         a += PAGE_SIZE;
@@ -92,7 +93,7 @@ early_vm_map(pagetable_t pagetable, uint64_t va, uint64_t size, uint64_t pa, uin
 static void
 early_mem_dirmap(pagetable_t pagetable,uint64_t va, uint64_t mem_top)
 {
-    debug("Direct mapping Vaddr 0x%lX \n", va);
+    early_printf("Direct mapping Vaddr 0x%lX \n", va);
     for(uint64_t pa=0; pa < mem_top; pa += 0x40000000){
         pagetable[PX(2, va+pa)] = PA2PTE(pa) | PTE_V | PTE_R | PTE_W | PTE_G | PTE_A | PTE_D;
     }
@@ -130,7 +131,7 @@ early_vm_init(void)
     enum mtype  type;
     kernel_map.pgmap_base = va;
     
-    debug("Size of page_t 0x%lX\n", sizeof(page_t));
+    early_printf("Size of page_t 0x%lX\n", sizeof(page_t));
     for (int i = 0; i < NELEM(board_memmap); i++)
     {
         type = board_memmap[i].type;
@@ -138,11 +139,11 @@ early_vm_init(void)
         {
             size = board_memmap[i].top - board_memmap[i].base;
             size = PGROUNDUP(size);
-            debug("Memory block size 0x%lX\n", size);
+            early_printf("Memory block size 0x%lX\n", size);
             size = size >> PAGE_SHIFT;
-            debug("Memory block 0x%lX pages\n", size);
+            early_printf("Memory block 0x%lX pages\n", size);
             size *= sizeof(page_t);
-            debug("page_map at 0x%lX size 0x%lX\n", va, size);
+            early_printf("page_map at 0x%lX size 0x%lX\n", va, size);
             board_memmap[i].map_addr = va;
             board_memmap[i].map_size = size;
             va += size;
@@ -203,12 +204,12 @@ vm_init(void)
     // printf("     MALLOC:  0x%p\n", MALLOC_MAP);
     // printf("     DIRMEM:  0x%p\n", DIRMEM_MAP);
     // printf("     KERNEL:  0x%p\n", KERMEL_MAP);
-    printf("Kernel virtual start:  0x%p\n", kernel_map.virt_kernel);
-    printf("Kernel physical start:  0x%p\n", kernel_map.phys_load);
-    printf("Kernel relocation offset:  0x%p\n", kernel_map.rel_offset);
-    printf("Page tables start:  0x%p\n", (uint64_t)_pgtable_start - kernel_map.rel_offset);
+    early_printf("Kernel virtual start:  0x%p\n", kernel_map.virt_kernel);
+    early_printf("Kernel physical start:  0x%p\n", kernel_map.phys_load);
+    early_printf("Kernel relocation offset:  0x%p\n", kernel_map.rel_offset);
+    early_printf("Page tables start:  0x%p\n", (uint64_t)_pgtable_start - kernel_map.rel_offset);
 
-
+    mmu_init();
 
     pg_pool_init();
 
@@ -247,9 +248,9 @@ vm_init(void)
 
     // ??? REWRITE Map only RAM in direct mapping
     // MEMIO map on demand              
-    printf("Memory mapping:\n");
+    early_printf("Memory mapping:\n");
     for(int i=0; i<NELEM(board_memmap); i++){
-        printf("    0x%lX -> 0x%lX type %d\n", 
+        early_printf("    0x%lX -> 0x%lX type %d\n", 
                 board_memmap[i].base, board_memmap[i].top, board_memmap[i].type);
       
         if((board_memmap[i].type == MEM_IO) ||
@@ -284,7 +285,9 @@ vm_init(void)
     // The trampoline has same address for kernel and user address spaces.
     mmu_map_pages(kernel_pagetable, TRAMPOLINE, PAGE_SIZE, (uint64_t)trampoline - kernel_map.rel_offset, PTE_R | PTE_X | PTE_G);
 
-    mmu_switch_pagetable((uint64_t)kernel_pagetable, 0);   
+    mmu_switch_pagetable((uint64_t)kernel_pagetable, 0); 
+
+    kpgt = DA2PA(kernel_pagetable);
 
     mmu_free_pagetable((pagetable_t)PA2DA(early_pagetable));
 

@@ -6,8 +6,8 @@
 #include <sched.h>
 
 
-#define IPC_NOWAIT  0x100000000     // do not sleep task
-#define IPC_EXIST   0x200000000     // do not create new
+#define IPC_NOWAIT  0x01     // do not sleep task (non-blocking ipc)
+#define IPC_EXIST   0x02     // do not create new
 
 struct ipc_manager
 {
@@ -40,7 +40,7 @@ typedef struct ipc_msg
     uint64_t    type;
     list_head_t mlist;
     task_t      *sender;
-    int         replay;
+    int         reply;
     char message[1];
 }ipc_msg_t;
 
@@ -61,9 +61,11 @@ int ipc_rcv_msg(uint64_t qid, uint64_t type, uintptr_t ubuf, uint64_t size, uint
 uint64_t ipc_get_shm(uint64_t key, size_t size, uint64_t flags);
 void *ipc_att_shm(uint64_t shmid, const void *addr, int flags);
 
+void *sys_ipc_shm_attach(task_t *t, int cap_id, const void *addr, int flags);
 
 uint64_t sys_ipc_call(task_t *t, uint32_t id, uint64_t umsg, uint64_t urep, uint64_t size);
-uint64_t sys_ipc_recv(task_t *t, uint32_t id, uint64_t uaddr, uint64_t size);
+uint64_t sys_ipc_recv(task_t *t, uint32_t id, uint64_t uaddr, uint64_t size, int flags);
+
 uint64_t sys_ipc_send(task_t *t, uint32_t id, uint64_t uaddr, uint64_t size);
 uint64_t sys_ipc_replay(task_t *t, uint64_t id, uint64_t uaddr, uint64_t size);
 

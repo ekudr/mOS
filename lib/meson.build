@@ -5,6 +5,7 @@ lib_sources = [
     'memset.S',
     'memmove.S',
     'memcpy.S',
+    'kprint.c',
 ]
 
 lib_a = static_library(

@@ -2,6 +2,7 @@
 #define __IRQ_H__
 
 #include <khash.h>
+#include <object.h>
 
 typedef struct irq_entry
 {
@@ -19,6 +20,14 @@ typedef struct irq_manager
     list_head_t     irqlist;
 } irq_manager_t;
 
+
+typedef struct irqpoint
+{
+    struct kobject   ko;
+    spinlock_t  lock;
+    struct task *owner;
+    int         irq;
+} irqpoint_t;
 
 
 void irq_init(void);

@@ -41,5 +41,6 @@ int ffs(int i);
 int ffsl(long i);
 int ffsll(long long i);
 
+void *memrchr(const void *, int, size_t);
 
 #endif

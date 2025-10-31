@@ -53,7 +53,6 @@ uint64_t sys_debug(void)
 uint64_t sys_mmap(void)
 {
     uint64_t        addr, paddr, size, flags;
-    pagetable_t     pgtable;
     task_t          *t = mytask();
 
     addr    = syscall_argraw(0);
@@ -77,9 +76,9 @@ uint64_t sys_sbrk(void)
     if (size == 0)
         return t->mm->brk;
 
+    addr = t->mm->brk;
     if (size > 0)
-    {
-        addr = t->mm->brk;
+    {        
         size = PGROUNDUP(size);
         if (uvm_alloc_mmreg(t, addr, size, MM_REG_MEM, PTE_U | PTE_R | PTE_W) != SUCCESS)        
             return -ENOMEM;
@@ -197,12 +196,13 @@ uint64_t sys_ipc_snd(void)
 
 uint64_t sys_ipc_rcv(void)
 {
-    uint64_t id, uaddr, size;
+    uint64_t id, uaddr, size, flags;
     id = syscall_argraw(0);
     uaddr = syscall_argraw(1);
     size = syscall_argraw(2);
+    flags = syscall_argraw(3);
     task_t *t = mytask();
-    return sys_ipc_recv(t, id, uaddr, size);
+    return sys_ipc_recv(t, id, uaddr, size, flags);
 }
 
 uint64_t sys_ipc_rpl(void)
@@ -244,6 +244,15 @@ uint64_t sys_cap_grnt(void)
     return sys_cap_grant((int)from_id, to_pid, (int)to_slot, (uint32_t)req_rights);
 }
 
+uint64_t __sys_cap_transfer(void)
+{
+    uint64_t dest_cap, src_cap, req_rights;
+    src_cap     = syscall_argraw(0);
+    dest_cap      = syscall_argraw(1);
+    req_rights  = syscall_argraw(2); 
+    return sys_cap_transfer(src_cap, dest_cap, req_rights);
+}
+
 uint64_t sys_cap_create(void)
 {
     uint64_t type, rights;
@@ -251,6 +260,35 @@ uint64_t sys_cap_create(void)
     rights = syscall_argraw(1);
     task_t *t = mytask();
     return sys_capability_create(t, type, rights);
+}
+
+uint64_t __sys_cap_free(void)
+{
+    uint64_t cap_id;
+    cap_id = syscall_argraw(0);
+
+    task_t *t = mytask();
+    cap_free(t, cap_id);
+    return 0;
+}
+
+uint64_t __sys_shmem_create(void)
+{
+    uint64_t size, rights;
+    size = syscall_argraw(0);
+    rights = syscall_argraw(1);
+    task_t *t = mytask();
+    return sys_cap_shmem_create(t, size, rights);
+}
+
+uint64_t __sys_shmem_attach(void)
+{
+    uint64_t cap_id, addr, flags;
+    cap_id = syscall_argraw(0);
+    addr = syscall_argraw(1);
+    flags = syscall_argraw(2);
+    task_t *t = mytask();
+    return (uint64_t)sys_ipc_shm_attach(t, (int)cap_id, (const void *)addr, (int)flags);
 }
 
 uint64_t sys_fast_call(void)

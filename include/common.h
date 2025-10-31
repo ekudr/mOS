@@ -18,6 +18,8 @@
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
 
+#define BIT(nr)			(1 << (nr))
+
 #if defined(__DEBUG__)
 #define debug(...)	printf(__VA_ARGS__)
 #else
@@ -28,6 +30,7 @@
 #define panic(str)	panic_("\x1b[31mPANIC STOP:\x1b[0m %s at %s:%d\n", str, __FILE__, __LINE__)
 
 void panic_(const char* format, ...);
+int kprint(const char* format, ...);
 void sbi_putc(char);
 
 
@@ -37,6 +40,7 @@ void mfree(void *ptr);
 uint64_t usec_to_tick(unsigned long usec);
 void udelay(unsigned long usec);
 
-
+int sbi_remote_hfence_vvma(unsigned long start, unsigned long size);
+int sbi_remote_sfence_vma(unsigned long start, unsigned long size);
 
 #endif /* __COMMON_H__ */

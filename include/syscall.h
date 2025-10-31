@@ -46,14 +46,19 @@
 #define SYS_irq_act 51
 
 #define SYS_endpt_crt 60
-#define SYS_cap_garnt 61
+
 #define SYS_ipc_snd 62
 #define SYS_ipc_rcv 63
 #define SYS_ipc_call 64
 #define SYS_ipc_rpl 65
 
 #define SYS_cap_crt 100
-#define SYS_fast_call 101
+#define SYS_cap_grant 101
+#define SYS_cap_transfer 102
+#define SYS_fast_call 103
+#define SYS_shmem_crt 104
+#define SYS_shmem_att 105
 
+#define SYS_cap_free 106
 
 #endif /* _SYSCALL_H */

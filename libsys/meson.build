@@ -8,6 +8,7 @@ libsys_sources = [
     'printf.c',
 #    'string.c',
     'debug.c',
+    'riscv_timer.c',
 ]
 
 

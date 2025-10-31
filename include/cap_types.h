@@ -15,7 +15,7 @@ typedef enum {
     CAP_ENDPOINT,
     CAP_REPLAY,
     CAP_FASTCALL,
-    CAP_MEMORY,
+    CAP_SHMEMORY,
     CAP_IRQ,
 } cap_type_t;
 

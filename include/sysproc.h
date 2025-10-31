@@ -31,8 +31,11 @@ uint64_t sys_ipc_rpl(void);
 uint64_t sys_ipc_cll(void);
 uint64_t sys_endpt_creat(void);
 uint64_t sys_cap_grnt(void);
-
+uint64_t __sys_cap_transfer(void);
 uint64_t sys_cap_create(void);
+uint64_t __sys_shmem_create(void);
+uint64_t __sys_shmem_attach(void);
+uint64_t __sys_cap_free(void);
 uint64_t sys_fast_call(void);
 
 #endif /* __SYSPROC_H__ */

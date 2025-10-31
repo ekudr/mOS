@@ -4,7 +4,7 @@
 #include <ipc.h>
 #include <libsys/ipc.h>
 #include <common.h>
-#include <memory.h>
+//#include <memory.h>
 #include <string.h>
 #include <nameserver.h>
 #include <cap.h>
@@ -12,14 +12,42 @@
 
 #include <syscall.h>
 
-#include "qmsg.h"
-
-uint64_t qkey = 0x0152474E4D564544;
-uint64_t qid;
+#include <devman.h>
 
 
-dm_device_t *device_root;
+struct dev_entry {
+    char     name[32];
+    cap_id_t driver_cap;
+};
 
+static struct dev_entry devices[DM_MAX_DEVS];
+static int dev_count = 0;
+
+//uint64_t qkey = 0x0152474E4D564544;
+//uint64_t qid;
+
+int dm_cap;
+//dm_device_t *device_root;
+
+static  kerrno_t dm_do_register(const struct dm_register *req)
+{
+    if (dev_count >= DM_MAX_DEVS) return -ENOSPC;
+//    debug("[DEVMEN] register driver %s cap %d\n", req->name, req->driver_cap);
+    strncpy(devices[dev_count].name, req->name, sizeof(devices[dev_count].name));
+    devices[dev_count].driver_cap = req->driver_cap;
+    dev_count++;
+    return SUCCESS;
+}
+
+static cap_id_t dm_do_lookup(const char *name)
+{
+    for (int i = 0; i < dev_count; i++) {
+        if (strcmp(devices[i].name, name) == 0)
+            return devices[i].driver_cap;
+    }
+    return -EINVAL;
+}
+/*
 void device_root_init(void)
 {  
     device_root = (dm_device_t *)malloc(sizeof(dm_device_t));
@@ -40,8 +68,8 @@ int device_register(dm_device_t *dev)
 {
     dev_add(dev);
 
-    free(dev);
-    return -1;
+//    free(dev);
+    return SUCCESS;
 }
 
 inline dm_device_t *get_dev(dm_msg_t *msg)
@@ -51,62 +79,65 @@ inline dm_device_t *get_dev(dm_msg_t *msg)
     return d;
 }
 
-void reply_status(uint64_t receiver, int status)
+void reply_status(int replay, int status)
 {
-    dm_msg_t *resp = malloc(sizeof(dm_msg_t));
+    dm_msg_t resp;
     if (status != SUCCESS)
     {
-        resp->type     = DM_RESPONSE;
-        resp->sender   = 1;
-        resp->msg.resp = DM_FAIL;
+        resp.type     = DM_RESPONSE;
+        resp.sender   = 1;
+        resp.msg.resp = status;
     } else {
-        resp->type     = DM_RESPONSE;
-        resp->sender   = 1;
-        resp->msg.resp = DM_SUCCESS;
+        resp.type     = DM_RESPONSE;
+        resp.sender   = 1;
+        resp.msg.resp = DM_SUCCESS;
     }
 
-    snd_msg(qid, receiver, (uintptr_t)resp, sizeof(dm_msg_t),0);
+    ipc_replay(replay, &resp, sizeof(resp));
+}
 
-    free(resp);
+int device_lookup_bby_type(dm_device_type_t type)
+{
+    dm_device_t *dev;
+    list_for_each_entry(dev, &device_root->devlist, devlist) {
+        if (dev->type == type) return SUCCESS;
+    }
+}
+*/
+int init_server()
+{
+    // Create Endpoint for capability
+    dm_cap = create_capability(CAP_ENDPOINT, CRIGHT_RCV | CRIGHT_SND | CRIGHT_GRANT);
+    if (dm_cap < 0) {
+        debug("PANIC DEVMAN");
+        for (;;);
+    }     
+    int ret = ns_register_cap(dm_cap, "devman", CRIGHT_SND | CRIGHT_GRANT);
+    if (ret < 0) {
+        debug("PANIC DEVMAN");
+        for (;;);
+    }  
+    return SUCCESS;  
 }
 
 int main()
 {
-    dm_msg_t *msg;
-    ns_msg_t nsmsg;
+    dm_msg_t msg, reply;
+//    ns_msg_t nsmsg;
 
     debug("Device manager ver. 0.0.1\n");
 
-    // int my_cap = ipc_endpoint_create(CRIGHT_SND | CRIGHT_SND | CRIGHT_GRANT);
-    // nsmsg.type = NS_REGISTER;
-    // strcpy(nsmsg.name, "devman");
 
-    // int ns_cap = cap_grant(my_cap, 1, -1 ,CRIGHT_SND | CRIGHT_GRANT);
-    // if (ns_cap < 0) {
-    //     debug("Error granting cap %d \n", ns_cap);
-    //     for(;;);
-    // }
-    // nsmsg.cap_id = ns_cap;
-    // debug("[DEVMAN] Cap transferred to %d\n", nsmsg.cap_id);
-    // int ret = ipc_send(1, &nsmsg, sizeof(ns_msg_t));
-    // if (ret < 0) {
-    //     debug("Error registring cap %d \n", ret);
-    //     for(;;);
-    // }
+    // Init server
+    init_server();
 
-    // Create Endpoint for capability
-    int cap = ipc_endpoint_create(CRIGHT_RCV | CRIGHT_SND | CRIGHT_GRANT);
-    if (cap < 0)
-        return cap;
+//    device_root_init();
 
-    ns_register_cap(cap, "devman", CRIGHT_SND | CRIGHT_GRANT);
-
-    device_root_init();
-
-    qid = get_msg(qkey, 0);
+//    qid = get_msg(qkey, 0);
 
 
-    debug("Size of msg 0x%lX\n", sizeof(dm_msg_t));
+//  debug("Size of msg 0x%lX\n", sizeof(dm_msg_t));
+/*
     msg = (dm_msg_t *) malloc(sizeof(dm_msg_t));
 
     if(msg == NULL)
@@ -119,25 +150,47 @@ int main()
     int r =  __fast_call_7(SYS_fast_call,1, 2, 3, 4, 5, 6, 7, &a, &b, &c, &d, &e, &f);
     debug("[DEVMAN] ipc call returned r 0x%lX a 0x%lX b 0x%lX c 0x%lX d 0x%lX e 0x%lX f 0x%lX\n",
             r,a,b,c,d,e,f);
+*/            
     while (1)
     {
+        cap_id_t rpl = ipc_receive(dm_cap, &msg, sizeof(dm_msg_t), 0);
 
-        if(rcv_msg(qid, 1, (uintptr_t)msg, sizeof(dm_msg_t), 0)){
-            debug("Message received ... ");
-            uint64_t sender = msg->sender;
-            switch (msg->type)
-            {
-            case DM_REGISTER_DEVICE:
-                int st = device_register(get_dev(msg));
-                reply_status(msg->sender, st);
-                break;
+        // wipe replay message
+        memset(&reply, 0, sizeof(reply));
+
+//        debug("Message received from %d type %d\n", msg.sender, msg.type);
+    
+        switch (msg.type)
+        {
+        case DM_REGISTER:
+            const struct dm_register *r = &msg.u.dm_register;
+            reply.u.dm_reply.err = dm_do_register(r);
+            reply.type = msg.type;
+//            debug("[DEVMAN] return %d\n",reply.u.dm_replay.err);
+            ipc_reply(rpl, &reply, sizeof(reply));
+            break;
+        
+        case DM_LOOKUP:
+            const struct dm_lookup *l = &msg.u.dm_lookup;
+            cap_id_t drv = dm_do_lookup(l->name);
+            if (drv == -EINVAL)
+                reply.u.dm_reply.err = -1;
+            else {
+                reply.u.dm_reply.err = 0;
+                int g_drv = cap_grant(drv, msg.sender, -1 , CRIGHT_SND);
+                if (g_drv < 0) reply.u.dm_reply.err = g_drv;            
+                reply.u.dm_reply.driver_cap = g_drv;
+            }
             
-            default:
-                break;
-            }     
-             
-        }
+            reply.type = msg.type;
+            ipc_reply(rpl, &reply, sizeof(reply));
 
-    }
- //        free(msg);   
+        default:
+            reply.u.dm_reply.err = -1;
+            reply.type = msg.type;
+            ipc_reply(rpl, &reply, sizeof(reply));
+            break;
+        }     
+                    
+    } 
 }

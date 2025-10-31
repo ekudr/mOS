@@ -4,16 +4,18 @@
 #include <sched.h>
 #include <errno.h>
 #include <object.h>
+#include <shmem.h>
 
 
 int cap_install(struct task *t, void *obj, cap_type_t type, uint32_t rights)
 {
+    if (!t) return -EINVAL;
     acquire(&t->cap_lock);
     for (int i = 0; i < MAX_CAPS; i++) {
         if (!t->caps[i].valid) {
             t->caps[i].valid = true; 
             t->caps[i].type = type;
-            t->caps[i].obj = obj;
+            t->caps[i].obj = ko_get((kobject_t *)obj);
             t->caps[i].rights = rights;
 //            debug("[CAP] created task %d cap id %d type %d rights %d\n", t->pid, i, t->caps[i].type, t->caps[i].rights);
             release(&t->cap_lock);
@@ -24,13 +26,13 @@ int cap_install(struct task *t, void *obj, cap_type_t type, uint32_t rights)
     return -ENOSPC; /* table full */
 }
 
-cap_entry_t *cap_lookup(task_t *t, uint32_t id)
+cap_entry_t *cap_lookup(task_t *t, int id)
 {
-    if (id < 0 || id >= MAX_CAPS)
+    if (!t || id < 0 || id >= MAX_CAPS)
         return NULL;
 
     acquire(&t->cap_lock);        
-    if (t->caps[id].valid == false){
+    if (!t->caps[id].valid){
         release(&t->cap_lock);
         return NULL;
     }
@@ -40,40 +42,65 @@ cap_entry_t *cap_lookup(task_t *t, uint32_t id)
     return e;
 }
 
-void cap_free(task_t *t, uint32_t id)
-{    
-    if (id < 0 || id >= MAX_CAPS)
-       return; 
+void cap_destroy(kobject_t *ko)
+{
+    if (ko->type == KO_SHMEM) {
+//        debug("[CAP] free shared memory 0x%lX\n", ko);
+        shmem_free_memory((shmem_block_t *)ko);
+    } else {
+        mfree(ko);
+    }
+}
 
+void cap_free(task_t *t, int id)
+{    
+    if (!t || id < 0 || id >= MAX_CAPS) return; 
     acquire(&t->cap_lock);        
-    if (t->caps[id].valid == false){
+    
+    if (!t->caps[id].valid){
         release(&t->cap_lock);
         return;
     }    
     
-    kobject_t *obj = t->caps[id].obj;
+    kobject_t *obj = (kobject_t *)t->caps[id].obj;
+    t->caps[id].obj = NULL;    
     t->caps[id].valid = false;
-    t->caps[id].obj = NULL;
     t->caps[id].type = CAP_NONE;        
     t->caps[id].rights = 0;
     release(&t->cap_lock);
+//    debug("[CAP] free kernel object refcount %d\n", obj->refcount);
+    if (obj) ko_put(obj, cap_destroy);
+}
 
-    if (obj) ko_put(obj, NULL);
+task_t *cap_to_task(task_t *task, int cap_id)
+{
+    if (!task || cap_id < 0 || cap_id >= MAX_CAPS) return NULL; 
+
+    cap_entry_t *ce = cap_lookup(task, cap_id);
+    if (!ce) return NULL;
+
+    kobject_t *ko = ce->obj;
+    if (!ko) return NULL;
+
+    return ko->owner;
 }
 
 /*
  * Create transient reply cap i server's cap tabble.
  * Return cap_id
  */
-int cap_replay_install(task_t *task, task_t *server)
+int cap_replay_install(task_t *server, task_t *client)
 {
-    replay_t *r = (replay_t *)ko_init(malloc(sizeof(replay_t)));
-    r->ko.type = KO_REPLAY;
-    r->sender = task;
+    if (!server || !client) return -EINVAL;
+    replay_t *r = malloc(sizeof(replay_t));
+    if (!r) return -ENOMEM;
+
+    r = (replay_t *)ko_init((kobject_t *)r, server, KO_REPLAY);
+    r->sender = client;
 
     int cap_id = cap_install(server, r, CAP_REPLAY, CRIGHT_SND);
     if (cap_id < 0) {
-        ko_put(&r->ko, NULL);
+        ko_put((kobject_t *)r, NULL);
         return -ENOSPC;
     }
     return cap_id;
@@ -81,55 +108,31 @@ int cap_replay_install(task_t *task, task_t *server)
 
 int sys_endpoint_create(task_t *t, uint32_t rights)
 {    
-    endpoint_t *ep = (endpoint_t *)ko_init(malloc(sizeof(endpoint_t)));
-    if (ep == NULL)
-        return -ENOMEM;
-    
-    ep->ko.type = KO_ENDPOINT;
+    endpoint_t *ep = malloc(sizeof(endpoint_t));
+    if (ep == NULL) return -ENOMEM;    
 
+    ep = (endpoint_t *)ko_init((kobject_t *)ep, t, KO_ENDPOINT);
     initlock(&ep->lock, "endpoint");
     list_init(&ep->msglist);
     ep->owner = t;
-
     ep->count = 0;
+
     int ret = cap_install(t, ep, CAP_ENDPOINT, rights);
     if (ret < 0)
         mfree(ep);
     return ret;
 }
-/*
-int replay_create(task_t *t, uint32_t rights)
-{
-    endpoint_t *rp = (endpoint_t *)ko_init(malloc(sizeof(endpoint_t)));
-    if (rp == NULL)
-        return -ENOMEM;
-    
-    rp->ko.type = KO_REPLAY;
 
-    initlock(&rp->lock, "replay");
-    list_init(&rp->msglist);
-    rp->owner = t;
-//    debug("[CAP] Endpoint allocated 0x%lX\n", ep);
-    rp->count = 0;
-    int ret = cap_install(t, rp, CAP_REPLAY, rights);
-    if (ret < 0)
-        mfree(rp);
-    return ret;
-}
-*/
 /*
  * Syscall create fastcall capability
  */
 
 int fastcall_create(task_t *t, uint32_t rights)
 {
-    fastcall_t *fc = (fastcall_t *)ko_init(malloc(sizeof(fastcall_t)));
+    fastcall_t *fc = malloc(sizeof(fastcall_t));
+    if (fc == NULL) return -ENOMEM;
 
-    if (fc == NULL)
-        return -ENOMEM;
-    
-    fc->ko.type = KO_FASTCALL;
-
+    fc = (fastcall_t *)ko_init((kobject_t *)fc, t, KO_FASTCALL);
     initlock(&fc->lock, "fastcall");
     list_init(&fc->tlist);
     fc->owner = t;
@@ -142,11 +145,46 @@ int fastcall_create(task_t *t, uint32_t rights)
     return ret;
 } 
 
+/*
+ * Create shared memory capability
+ * Return cap_id
+ */
+int sys_cap_shmem_create(task_t *t, size_t size, uint32_t rights)
+{
+    int ret;
+
+    if (!size || !rights) return -EINVAL;
+//    debug("[CAP] Create shmem cap size 0x%lX\n", size);
+    size_t sz = PGROUNDUP(size);
+
+    shmem_block_t *shm = malloc(sizeof(shmem_block_t));
+    if (shm == NULL) return -ENOMEM;
+
+    shm = (shmem_block_t *)ko_init((kobject_t *)shm, t, KO_SHMEM);
+      
+    shm->size = size;
+    shm->npages = sz >> PAGE_SHIFT;
+
+    ret = shmem_alloc_memory(shm);
+    if (ret < 0) {
+        mfree(shm);
+        return ret;
+    }
+
+    ret = cap_install(t, shm, CAP_SHMEMORY, rights);
+    if (ret < 0) {
+        // free_shmem()
+        mfree(shm);
+    }
+        
+    return ret;
+}
+
 int sys_capability_create(task_t *t, cap_type_t type, uint32_t rights)
 {
     int ret;
 //    debug("[CAP] task %d create cap type %d\n", t->pid, type);
-        switch (type)
+    switch (type)
         {
         case CAP_ENDPOINT:
             ret = sys_endpoint_create(t, rights);
@@ -161,6 +199,7 @@ int sys_capability_create(task_t *t, cap_type_t type, uint32_t rights)
             break;
 */      
         default:
+            ret = -EINVAL;
             break;
     }
 
@@ -276,8 +315,20 @@ long sys_cap_grant(int from_id, uint64_t to_pid, int to_slot, uint32_t req_right
 {
     task_t *from = mytask();
     task_t *to = sched_find_task(to_pid);
-    if (to == NULL)
-        return -ENOENT;
+    if (!to) return -ENOENT;
     
-        return cap_grant_into(from, from_id, to, to_slot,req_rights);
+    return cap_grant_into(from, from_id, to, to_slot,req_rights);
+}
+
+/*
+ * Transfer capability from task to task by known cap id.
+ */
+int sys_cap_transfer(int src_cap, int dest_cap, uint32_t req_rights)
+{
+    debug("[CAP] transfer cap %d to %d\n", src_cap, dest_cap);
+    task_t *src_task = mytask();
+    task_t *dest_task = cap_to_task(src_task, dest_cap);
+    debug("[CAP] transfer from task %d to %d\n", src_task->pid, dest_task->pid);
+    if (!dest_task || src_task == dest_task) return -EINVAL;
+    return cap_grant_into(src_task, src_cap, dest_task, -1,req_rights);
 }

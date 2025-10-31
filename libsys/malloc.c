@@ -30,6 +30,7 @@ int mem_init(size_t size)
         printf("size %d tindx %d\n", i, usize2tidx(i));
     }
 */    
+    return SUCCESS;
 }
 
 static inline void
@@ -71,7 +72,7 @@ static void*
 __find_free(size_t size)
 {
     list_head_t *chpos;
-    mem_heap_t *heap;
+//    mem_heap_t *heap;
     mem_chunk_t *chunk;
 //    debug("Looking memsize 0x%lX\n", size);
 

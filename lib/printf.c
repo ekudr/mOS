@@ -915,13 +915,5 @@ int fctprintf(void (*out)(char character, void* arg), void* arg, const char* for
   return ret;
 }
 
-void panic_(const char* format, ...)
-{
-    va_list va;
-    va_start(va, format);
-    vprintf(format, va);
-    va_end(va);
-//    intr_off();
-    for(;;);
-}
+
 

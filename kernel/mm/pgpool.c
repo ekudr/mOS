@@ -70,8 +70,8 @@ pg_pool_init()
         {
             board_memmap[i].base_pfn = pa_start >> PAGE_SHIFT;
             board_memmap[i].map_addr = pm;
-            debug("Memblock %d 0x%lX-0x%lX 0x%lX bytes\n", i, pa_start, pa_end, pa_end- pa_start);
-            debug("page_map size 0x%lX\n", board_memmap[i].map_size);
+            early_printf("Memblock %d 0x%lX-0x%lX 0x%lX bytes\n", i, pa_start, pa_end, pa_end- pa_start);
+            early_printf("page_map size 0x%lX\n", board_memmap[i].map_size);
             for (int p = pa_start >> PAGE_SHIFT; p <= pa_end >> PAGE_SHIFT; p++)
             {
 //                debug("PFN 0x%lX page at 0x%lX\n", p, pfn_to_page(p));
@@ -80,13 +80,13 @@ pg_pool_init()
 //                page_map[p-(pa_start >> PAGE_SHIFT)].flags = PG_unknown;
             }
             pm += board_memmap[i].map_size;
-            debug("Page_map %d at 0x%lX range 0x%lX->0x%lX base pfn 0x%lX\n", i, board_memmap[i].map_addr,
+            early_printf("Page_map %d at 0x%lX range 0x%lX->0x%lX base pfn 0x%lX\n", i, board_memmap[i].map_addr,
                     board_memmap[i].base, board_memmap[i].top, board_memmap[i].base_pfn);
         }  else if (type == FRMBUF){
             board_memmap[i].base_pfn = pa_start >> PAGE_SHIFT;
             board_memmap[i].map_addr = pm;
-            debug("Memblock %d 0x%lX-0x%lX 0x%lX bytes\n", i, pa_start, pa_end, pa_end- pa_start);
-            debug("page_map at 0x%lX\n", board_memmap[i].map_addr);            
+            early_printf("Memblock %d 0x%lX-0x%lX 0x%lX bytes\n", i, pa_start, pa_end, pa_end- pa_start);
+            early_printf("page_map at 0x%lX\n", board_memmap[i].map_addr);            
             for (int p = pa_start >> PAGE_SHIFT; p <= pa_end >> PAGE_SHIFT; p++)
             {
 //                debug("PPN 0x%lX page at 0x%lX\n", p, ppn_to_page(p));
@@ -95,11 +95,11 @@ pg_pool_init()
 //                page_map[p-(pa_start >> PAGE_SHIFT)].flags = PG_unknown;
             }
             pm += board_memmap[i].map_size;
-            debug("Page_map %d at 0x%lX range 0x%lX->0x%lX base pfn 0x%lX\n", i, board_memmap[i].map_addr,
+            early_printf("Page_map %d at 0x%lX range 0x%lX->0x%lX base pfn 0x%lX\n", i, board_memmap[i].map_addr,
                 board_memmap[i].base, board_memmap[i].top, board_memmap[i].base_pfn);            
         }          
     }
-    debug("0x%lX pages initiated\n", count);
+    early_printf("0x%lX pages initiated\n", count);
 
     
     initlock(&pg_pool.lock, "pgmem");

@@ -222,6 +222,7 @@ int mmu_user_copyout(pagetable_t pagetable, uint64_t dstva, char *src, uint64_t 
 kerrno_t mmu_memmap(pagetable_t pgtable, uint64_t vaddr, uint64_t size, int perm);
 
 void mmu_free_pagetable(pagetable_t pagetable);
+void mmu_init(void);
 
 #endif /* __ASSEMBLY__ */
 #endif /* __MMU_H__ */

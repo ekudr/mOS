@@ -298,11 +298,12 @@ void scheduler(void)
     list_head_t *pos;
 
     c->task = NULL;
-
+    
     for (;;)
     {
         // Avoid deadlock by ensuring that devices can interrupt.
         intr_on();
+//        sfence_vma();
 //                debug("%d ", current_cpu->hartid);
         list_for_each(pos, &gp_tm->tasklist)
         {
@@ -412,6 +413,7 @@ sched_taskalloc(void)
     t = malloc(sizeof(task_t));
     if (t == 0)
         panic("[SHED] cannot alloc task mem");
+//    debug("[SCHED] Task allocated at 0x%lX\n", t);    
     memset(t, 0, sizeof(task_t));
 
     initlock(&t->lock, "task");
@@ -464,7 +466,7 @@ sched_taskalloc(void)
         ns_ep = ep;
 
     initlock(&t->rep_lock, "ipc replay");
-    t->replay = NULL;
+    t->replay_msg = NULL;
 
     // Add name server endpoint as cap 1
     cap_install(t, ns_ep, CAP_ENDPOINT, CRIGHT_SND);

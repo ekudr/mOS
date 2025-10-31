@@ -17,6 +17,16 @@ nameserver_elf = executable(
     link_depends: [libsys_a, libc_a, ],
 )
 
+vfs_elf = executable(
+    'vfs',
+    sources : ['vfs/vfs.c'],
+    include_directories: [include_libc, include_board, include_libsys],
+    c_args: c_args,
+    link_args: [linker_args],
+    link_with: [libsys_a, libc_a, ],
+    link_depends: [libsys_a, libc_a, ],
+)
+
 devman_elf = executable(
     'devman',
     sources : ['devman.c'],
@@ -48,8 +58,35 @@ tty_elf = executable(
 
 )
 
+mmc_sources = [
+    'mmc_drv/main.c', 
+    'mmc_drv/mmc.c',
+    'mmc_drv/device.c',
+]
+
+if board.contains('vf2')
+    mmc_sources += ['mmc_drv/dwmmc.c']
+endif
+if board.contains('qemu')
+    
+endif
+if board.contains('bpi-f3')
+    mmc_sources += ['mmc_drv/sdhci-k1.c', 'mmc_drv/sdhci.c']
+endif
+
+mmc_drv_elf = executable(
+    'mmc_drv',
+    sources : mmc_sources,
+    include_directories: [include_libc, include_board, include_libsys, ],
+    c_args: c_args,
+    link_args: [linker_args],
+    link_with: [libsys_a, libc_a, ],
+    link_depends: [libsys_a, libc_a, ],
+
+)
+
 servers_img = custom_target('image',
-    input: [nameserver_elf, devman_elf, tty_elf, one_elf],
+    input: [nameserver_elf, vfs_elf, devman_elf, tty_elf, one_elf, mmc_drv_elf],
     output: 'servers.img',
     command: [py3, meson.project_source_root() +'/tools/build_img.py', '@INPUT@', '-o', '@OUTPUT@'],
     depends: [devman_elf, one_elf],

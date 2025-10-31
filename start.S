@@ -3,7 +3,7 @@
 /* I supposed after U-boot it is S-mode */
 
     .section .text.enter , "ax"
-    .global _start, _imglen
+    .global _start, _imglen, _hart_start
 
 _start:
     j _kernel_start
@@ -11,6 +11,7 @@ _start:
     .balign 8
 _imglen:
     .dword _end - _start
+
 
 enable_mmu:
     la a1, kernel_map
@@ -30,6 +31,7 @@ enable_mmu:
 
     sfence.vma
     csrw satp, a2
+    sfence.vma
 .align 2
 1:  
     /* Set trap vector to spin forever to help debug */
@@ -95,6 +97,52 @@ _kernel_start:
 
     call kernel_init
     tail kernel_init
+
+_hart_start:
+
+    /* Disable interrapts */
+    csrw sie, zero
+    csrw sip, zero
+
+.option push
+.option norelax
+	la gp, __global_pointer$
+.option pop
+
+    mv tp,a0
+
+        /*  Set stack */
+    la t0, _stack_top   /* Stack base */
+    li t1, 4096     /* Stack size */
+    mul t1, a0, t1  /* a0 is number oh HART */
+    add t0, t0, t1  
+    li t1, 4096     /* reserved stack */
+    add t0, t0, t1
+    move sp, t0
+
+    la a0, kpgt
+    
+    ld a0, 0(a0)
+  
+    call enable_mmu
+    
+	la t0, kernelvec
+	csrw stvec, t0
+
+    /*  Set stack */
+    la a0, boot_hartid
+    ld a0, 0(a0)
+    la t0, _stack_top   /* Stack base */
+    li t1, 4096     /* Stack size */
+    mul t1, a0, t1  /* a0 is HART id */
+    add t0, t0, t1  
+    li t1, 4096     /* reserved stack */
+    add t0, t0, t1
+    mv sp, t0
+
+    mv a0, tp
+    call boot_init_hart
+    tail boot_init_hart
 
 
 _stop:

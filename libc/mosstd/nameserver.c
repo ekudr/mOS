@@ -40,18 +40,18 @@ kerrno_t ns_register_cap(int cap_id, char *name, uint32_t rights)
  */
 int ns_lookup_cap(char *name)
 {
-    ns_msg_t msg;
+    ns_msg_t msg, reply;
     msg.pid  = getpid();
     msg.type = NS_LOOKUP;
-    strncpy(msg.name, name, MAX_NAME_LEN);
+    strncpy(msg.name, name, sizeof(name));
 
 
-    int ret = ipc_call(1, &msg, &msg, sizeof(ns_msg_t));
+    int ret = ipc_call(1, &msg, &reply, sizeof(ns_msg_t));
     if (ret < 0) {
         debug("Error registring cap %d \n", ret);
     }
-    if (msg.type == NS_REPLAY)
-        ret = msg.cap_id;
+    if (reply.type == NS_REPLAY)
+        ret = reply.cap_id;
  
     return ret;
 }
