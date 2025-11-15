@@ -22,6 +22,8 @@ pid_t getpid(void);
 int debug(const char *format, ...);
 int cons_out(const char *format, ...);
 
+int  snprintf_(char* buffer, size_t count, const char* format, ...);
+
 void *malloc(size_t size);
 void free(void *ptr);
 

@@ -49,7 +49,6 @@ libc_mosstd = [
     'mosstd/getpid.c',
     'mosstd/cap.c',
     'mosstd/ipc.c',
-    'mosstd/fastcall.c',
     'mosstd/devman.c',
     'mosstd/nameserver.c',
     'mosstd/vfs.c',

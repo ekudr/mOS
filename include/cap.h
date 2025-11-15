@@ -5,20 +5,22 @@ struct kobject;
 
 struct task;
 
-#define MAX_CAPS 64
+
 
 #include <cap_types.h>
 
 typedef struct cap_entry
 {
-    bool       valid;   // ??? Ican as not NULL object
+//    bool       valid;   // ??? Ican as not NULL object
     cap_type_t type;    // use it for non-kernel object like REPLAY
                         // Maybbe I need to create kobbject
     struct kobject  *obj;
     uint32_t   rights;
 } cap_entry_t;
 
+#define MAX_CAPS 128
 
+void *create_cnode(void);
 
 int cap_install(struct task *t, void *obj, cap_type_t type, uint32_t rights);
 int cap_replay_install(struct task *task, struct task *server);

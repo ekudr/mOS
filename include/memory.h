@@ -9,7 +9,7 @@
 #include <shmem.h>
 #include <board_krnldata.h>
 
-#include "ipc.h"
+//#include "ipc.h"
 
 
 extern pagetable_t kernel_pagetable;
@@ -203,10 +203,11 @@ typedef enum {
 
 typedef struct mem_region
 {
-    uint64_t addr;
-    uint64_t size;
+    kobject_t       hdr;
+    uint64_t        addr;
+    uint64_t        size;
     memreg_status_t status;
-    list_head_t memlist;
+    list_head_t     memlist;
     union {
         struct shmem_block  *shmem_block;
     };

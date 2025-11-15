@@ -10,6 +10,7 @@
 #include <string.h>
 #include <errno.h>
 #include <mmu.h>
+#include <sched.h>
 
 
 static void (*__sbi_set_timer)(uint64_t stime);

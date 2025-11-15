@@ -14,6 +14,13 @@ struct kernel_map kernel_map;
 
 
 uint64_t boot_hartid;
+uint64_t __a1;
+uint64_t __a2;
+uint64_t __a3;
+uint64_t __a4;
+uint64_t __a5;
+uint64_t __a6;
+uint64_t __a7;
 
 uint64_t mem_start, mem_end;
 
@@ -198,7 +205,17 @@ memory_map(pagetable_t pagetable, uint64_t va, uint64_t size, uint64_t pa, uint6
 void
 vm_init(void)
 {
-
+//     early_printf("a1 0x%lX a2 0x%lX a3 0x%lX a4 0x%lX\n", __a1, __a2, __a3, __a4);
+//     early_printf("a5 0x%lX a6 0x%lX a7 0x%lX\n", __a5, __a6, __a7);
+//     uint32_t *dtb = (uint32_t *)PA2DA(__a1);
+//     char *str = (char *)PA2DA(dtb[0]);
+// //    early_printf("[sadasd] %s\n", str);
+//     for (int i = 0; i < 50; i++)
+//     {
+//         early_printf("0x%x ", str[i]);
+//     }
+    
+    
     // printf("Kernel memory map:\n");
     // printf("     VMEMMAP: 0x%p\n", VMEMMAP_START);
     // printf("     MALLOC:  0x%p\n", MALLOC_MAP);

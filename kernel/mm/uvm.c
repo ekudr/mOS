@@ -78,7 +78,14 @@ uvm_alloc_mmreg(task_t *task, uint64_t vaddr, uint64_t size, uint64_t type, int 
         panic("[MMU] Can not allocate a mem block");
         return -ENOMEM;
     }
-        
+
+    mreg = (mem_reg_t *)ko_init((kobject_t *)mreg, t, KO_FRAME);
+
+    if (cap_install(t, mreg, CAP_ENDPOINT, CRIGHT_MAP)< 0) {
+        mfree(mreg);
+        panic("[UVM] can not allocate capability");
+        return -ENOENT; 
+    }   
 
     mreg->addr = vaddr;
     mreg->size = size;
@@ -165,6 +172,14 @@ uvm_alloc_vmem(task_t *task, uint64_t vaddr, size_t size)
         release(&mm->lock);
         return NULL;
     }        
+
+    mreg = (mem_reg_t *)ko_init((kobject_t *)mreg, t, KO_FRAME);
+
+    if (cap_install(t, mreg, CAP_ENDPOINT, CRIGHT_MAP)< 0) {
+        mfree(mreg);
+        panic("[UVM] can not allocate capability");
+        return NULL; 
+    }   
 
     mreg->addr = vaddr;
     mreg->size = size;

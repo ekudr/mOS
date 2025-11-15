@@ -1,6 +1,8 @@
 #include <common.h>
 #include <mmu.h>
 #include <memory.h>
+#include <sched.h>
+
 
 kstack_manager_t g_kstack_manager;
 kstack_manager_t *gp_ksm;
@@ -194,12 +196,20 @@ kmem_free(void *ptr)
     slub->nextfree = addr;
 //    debug("[KMEM] slub nextfree 0x%lX\n",slub->nextfree);
     if(slub->slub_cache->slub != slub){
-        debug("[KMEM] slub queue next 0x%lX prev 0x%lX slub list next 0x%lX prev 0x%lX\n",
-                slub->slub_cache->qslub.next, slub->slub_cache->qslub.prev,
-                slub->slublist.next, slub->slublist.prev);
+        // debug("[KMEM] slub 0x%lX slub_cache->slub 0x%lX slub->slub_cache->qslub 0x%lX 
+        //         slub->slub_cache->qslub.next 0x%lX slub->slub_cache->qslub.prev 0x%lX\n",
+        //         slub, slub->slub_cache->slub, slub->slub_cache->qslub, 
+        //         slub->slub_cache->qslub.next, slub->slub_cache->qslub.prev);
+
+        // debug("[KMEM] slab 0x%lX slub list next 0x%lX prev 0x%lX\n", 
+        //         slub, slub->slublist.next, slub->slublist.prev);
+        //    /// ??? not correct     
         if((slub->slublist.next == slub->slublist.prev)){
-            debug("!!!!!!!!!!!!!!!! add to list\n");
+//            debug("!!!!!!!!!!!!!!!! add to list\n");
+
             list_add(&slub->slub_cache->qslub, &slub->slublist);
+//            debug("[KMEM] slab 0x%lX slub list next 0x%lX prev 0x%lX\n", 
+//                slub, slub->slublist.next, slub->slublist.prev);            
         }
     }
 

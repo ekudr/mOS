@@ -1,6 +1,6 @@
 #include <mosstd.h>
 #include <cap.h>
-#include <ipc.h>
+#include <libsys/ipc.h>
 #include <libsys/list.h>
 #include <string.h>
 
@@ -136,43 +136,57 @@ int main()
     init_server();
     init_vfs();
 
-    struct vfs_msg msg;
+    
 
     while (1)
     {
         inode_t *node;
-        int rpl = ipc_receive(vfs_cap, &msg, sizeof(msg), 0);
-        switch (msg.type)
+        struct vfs_msg *msg = (struct vfs_msg *)get_ipc_buffer()->msg;
+        uint64_t info = ipc_recv(vfs_cap, NULL);
+        int ret = (int)label_from_msginfo_word(info);
+        if (ret < 0 || !length_from_msginfo_word(info)) {
+            debug("[VFS] Error receiving message %d info 0x%lX\n", ret, info);
+        }
+
+        switch (msg->type)
         {
         case VFS_OPEN:
 //            debug("[VFS] open path %s\n", msg.path);
-            node = vfs_lookup_path(root, msg.path);
+            node = vfs_lookup_path(root, msg->path);
+            
             if (!node) {
-                msg.ret = -ENOENT;
+                memset(msg, 0, sizeof(struct vfs_msg));
+                msg->ret = -ENOENT;
             }
             else if (node->type == VFS_DEVICE) {
-                    int g_cap = cap_grant(node->dev_data.cap_id, msg.pid, -1, CRIGHT_SND);
-                    msg.ret = g_cap;
+                    int g_cap = cap_grant(node->dev_data.cap_id, msg->pid, -1, CRIGHT_SND);
+                    memset(msg, 0, sizeof(struct vfs_msg));
+                    msg->ret = g_cap;
             } else {
-                msg.ret = node->id;
+                memset(msg, 0, sizeof(struct vfs_msg));
+                msg->ret = node->id;
             }
                 
-            
-            ipc_reply(rpl, &msg, sizeof(msg));
+            info = msginfo_word_new(0,sizeof(struct vfs_msg)/8, 0, 0);
+            ipc_reply(info);
             break;
         
         case VFS_CREATE:
-//            debug("[VFS] create path %s\n", msg.path);
-             inode_t *exist = vfs_lookup_path(root, msg.path);
+//            debug("[VFS] create path %s\n", msg->path);
+             inode_t *exist = vfs_lookup_path(root, msg->path);
              if (exist) {
-                 msg.ret = -EEXIST;
-                 ipc_reply(rpl, &msg, sizeof(msg));
+                memset(msg, 0, sizeof(struct vfs_msg));
+                msg->ret = -EEXIST;
+                info = msginfo_word_new(0,sizeof(struct vfs_msg)/8, 0, 0);
+                ipc_reply(info);
             }
-            const char *full = msg.path;
+            const char *full = msg->path;
             const char *lastslash = strrchr(full, '/');
             if (!lastslash) {
-                msg.ret = -EINVAL;
-                ipc_reply(rpl, &msg, sizeof(msg));
+                memset(msg, 0, sizeof(struct vfs_msg));
+                msg->ret = -EINVAL;
+                info = msginfo_word_new(0,sizeof(struct vfs_msg)/8, 0, 0);
+                ipc_reply(info);
                 break;
             }
             char parent_path[128];
@@ -184,14 +198,17 @@ int main()
             strncpy(name, lastslash+1, sizeof(name)-1);
             name[sizeof(name)-1] = '\0'; 
             
-            node = vfs_create_node(root, parent_path, name, msg.inode_type, msg.cap_id);
+            node = vfs_create_node(root, parent_path, name, msg->inode_type, msg->cap_id);
+
+            memset(msg, 0, sizeof(struct vfs_msg)); 
             if (!node) {
-                msg.ret = -EINVAL;
+                msg->ret = -EINVAL;
             } else {                
-                msg.ret = node->id;
+                msg->ret = node->id;
             }
             
-            ipc_reply(rpl, &msg, sizeof(msg));
+            info = msginfo_word_new(0,sizeof(struct vfs_msg)/8, 0, 0);
+            ipc_reply(info);
             break;
 
         default:

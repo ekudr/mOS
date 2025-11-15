@@ -18,7 +18,7 @@
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
 
-#define BIT(nr)			(1 << (nr))
+#define BIT(nr)			(1UL << (nr))
 
 #if defined(__DEBUG__)
 #define debug(...)	printf(__VA_ARGS__)

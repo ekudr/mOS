@@ -1,8 +1,8 @@
 #include <stdint.h>
 //#include <syscall.h>
-//#include <libsys/syscalls.h>
+#include <libsys/ipc.h>
 
-
+ipc_buffer_t *__ipc_buffer;
 
 /*
 // Print string
@@ -18,5 +18,3 @@ _putchar(char s) {
 //    putc(s);
 
 }
-  
-

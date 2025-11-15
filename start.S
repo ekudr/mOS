@@ -4,6 +4,7 @@
 
     .section .text.enter , "ax"
     .global _start, _imglen, _hart_start
+    .extern __a1, __a2, __a3, __a4, __a5, __a6, __a7
 
 _start:
     j _kernel_start
@@ -61,6 +62,27 @@ _kernel_start:
     la t1, boot_hartid
     sd a0, 0(t1)
     mv tp, a0
+
+#    la t1, __a1
+#    sd a1, 0(t1)
+
+#    la t1, __a2
+#    sd a2, 0(t1)
+
+#    la t1, __a3
+#    sd a3, 0(t1)
+
+#    la t1, __a4
+#    sd a4, 0(t1)
+
+#    la t1, __a5
+#    sd a5, 0(t1)
+
+#    la t1, __a6
+#    sd a6, 0(t1)
+
+#    la t1, __a7
+#    sd a7, 0(t1)
 
     /*  Set stack */
     la t0, _stack_top   /* Stack base */

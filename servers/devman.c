@@ -112,6 +112,8 @@ int init_server()
         debug("PANIC DEVMAN");
         for (;;);
     }     
+
+    // ??? Create copy endpoint for share
     int ret = ns_register_cap(dm_cap, "devman", CRIGHT_SND | CRIGHT_GRANT);
     if (ret < 0) {
         debug("PANIC DEVMAN");
@@ -122,73 +124,62 @@ int init_server()
 
 int main()
 {
-    dm_msg_t msg, reply;
-//    ns_msg_t nsmsg;
-
     debug("Device manager ver. 0.0.1\n");
 
 
     // Init server
     init_server();
-
-//    device_root_init();
-
-//    qid = get_msg(qkey, 0);
-
-
-//  debug("Size of msg 0x%lX\n", sizeof(dm_msg_t));
-/*
-    msg = (dm_msg_t *) malloc(sizeof(dm_msg_t));
-
-    if(msg == NULL)
-    {
-        debug("ERROR: memory allocation\n");
-        for(;;);
-    }
-
-    uint64_t a,b,c,d,e,f;
-    int r =  __fast_call_7(SYS_fast_call,1, 2, 3, 4, 5, 6, 7, &a, &b, &c, &d, &e, &f);
-    debug("[DEVMAN] ipc call returned r 0x%lX a 0x%lX b 0x%lX c 0x%lX d 0x%lX e 0x%lX f 0x%lX\n",
-            r,a,b,c,d,e,f);
-*/            
+           
     while (1)
     {
-        cap_id_t rpl = ipc_receive(dm_cap, &msg, sizeof(dm_msg_t), 0);
-
-        // wipe replay message
-        memset(&reply, 0, sizeof(reply));
-
+        dm_msg_t *msg = (dm_msg_t *)get_ipc_buffer()->msg;
+        uint64_t info = ipc_recv(dm_cap, NULL);
+        int ret = (int)label_from_msginfo_word(info);
+        if (ret < 0 || !length_from_msginfo_word(info)) {
+            debug("[DEVMAN] Error receiving message %d info 0x%lX\n", ret, info);
+        }
+        
 //        debug("Message received from %d type %d\n", msg.sender, msg.type);
-    
-        switch (msg.type)
+        uint32_t type =msg->type;
+        uint64_t sender = msg->sender;
+        msg->u.dm_register.driver_cap = ipc_get_cap(0);
+
+        switch (type)
         {
         case DM_REGISTER:
-            const struct dm_register *r = &msg.u.dm_register;
-            reply.u.dm_reply.err = dm_do_register(r);
-            reply.type = msg.type;
+            const struct dm_register *r = &msg->u.dm_register;
+            int err = dm_do_register(r);
+            memset(msg, 0, sizeof(dm_msg_t));
+            msg->u.dm_reply.err = err;
+            msg->type = type;
 //            debug("[DEVMAN] return %d\n",reply.u.dm_replay.err);
-            ipc_reply(rpl, &reply, sizeof(reply));
+            info = msginfo_word_new(0,sizeof(dm_msg_t)/8, 0, 0);
+            ipc_reply(info);
             break;
         
         case DM_LOOKUP:
-            const struct dm_lookup *l = &msg.u.dm_lookup;
+            const struct dm_lookup *l = &msg->u.dm_lookup;
             cap_id_t drv = dm_do_lookup(l->name);
+            memset(msg, 0, sizeof(dm_msg_t));
             if (drv == -EINVAL)
-                reply.u.dm_reply.err = -1;
+                msg->u.dm_reply.err = -1;
             else {
-                reply.u.dm_reply.err = 0;
-                int g_drv = cap_grant(drv, msg.sender, -1 , CRIGHT_SND);
-                if (g_drv < 0) reply.u.dm_reply.err = g_drv;            
-                reply.u.dm_reply.driver_cap = g_drv;
+                msg->u.dm_reply.err = 0;
+                int g_drv = cap_grant(drv, sender, -1 , CRIGHT_SND);
+                if (g_drv < 0) msg->u.dm_reply.err = g_drv;            
+                msg->u.dm_reply.driver_cap = g_drv;
             }
             
-            reply.type = msg.type;
-            ipc_reply(rpl, &reply, sizeof(reply));
+            msg->type = type;
+            info = msginfo_word_new(0,sizeof(dm_msg_t)/8, 0, 0);
+            ipc_reply(info);
 
         default:
-            reply.u.dm_reply.err = -1;
-            reply.type = msg.type;
-            ipc_reply(rpl, &reply, sizeof(reply));
+            memset(msg, 0, sizeof(dm_msg_t));
+            msg->u.dm_reply.err = -1;
+            msg->type = type;
+            info = msginfo_word_new(0,sizeof(dm_msg_t)/8, 0, 0);
+            ipc_reply(info);
             break;
         }     
                     

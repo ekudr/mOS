@@ -11,7 +11,7 @@ int create_capability(cap_type_t type, cap_rights_t rights)
     return __syscall(SYS_cap_crt, (uint64_t)type, (uint64_t)rights);
 }
 
-long cap_grant(int from_id, uint64_t to_pid, int to_slot, uint32_t req_rights)
+int cap_grant(int from_id, uint64_t to_pid, int to_slot, uint32_t req_rights)
 {
     return (long)__syscall(SYS_cap_grant, (uint64_t)from_id, to_pid, (uint64_t)to_slot, (uint64_t)req_rights);
 }

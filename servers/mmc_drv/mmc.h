@@ -521,5 +521,10 @@ kerrno_t board_init_host(struct mmc_host *host);
 
 int mmc_bread(void* dst, uint32_t src_lba, size_t size);
 void panic(const char *str);
+uint64_t get_card_capacity();
+int init_dev();
 
+uint64_t get_device_start(int n);
+uint64_t get_device_end(int n);
+void set_device_name(int n, const char *name);
 #endif /* __MMC_H__ */

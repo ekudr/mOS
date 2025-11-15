@@ -123,7 +123,7 @@ uart_init(void)
     uart_dev.irq = UART0_IRQ;
     uart_dev.clk_div = UART0_DIV;
 
-//    debug("\x1b[31mDEBUG\x1b[0m 0x%lX\n", *((char *)uart_dev.base));
+//    debug("\x1b[31mDEBUG\x1b[0m 0x%lX\n", uart_dev.base);
 
         // wait transmitter empty
     while ((uart_regr(UART_LSR) & UART_LSR_EMPTY_MASK) == 0);
@@ -233,8 +233,8 @@ void init_server(void)
 int main()
 {
    // uint64_t dmkey  = 0x0152474E4D564544;    // DEVICE MANAGER queue key
-    uint64_t qkey   = 0x01204E4F43535953;
-    uint64_t qid    = 0;
+    // uint64_t qkey   = 0x01204E4F43535953;
+    // uint64_t qid    = 0;
    // uint64_t dmqid  = 0;
    // dm_msg_t *msg;
     
@@ -242,18 +242,18 @@ int main()
 
   //  char *hello = "Hello world\r\n";
 
-   pid = getpid();
+//    pid = getpid();
 
-    debug("TTY driver ver. 0.0.1\n");
+//     debug("TTY driver ver. 0.0.1\n");
     
-    qid = shmget(qkey, 0x2000, 0);
+//     qid = shmget(qkey, 0x2000, 0);
 
-    if (qid == 0)
-        panic("[TTY] shared memory init error");
-    debug("Shmem ID 0x%lX\n", qid);
-    buffer = (struct stream *)shmat(qid, NULL, 0);
-    debug("Shmem addr 0x%lX\n", buffer);
-    memset(buffer, 0, 0x2000);
+//     if (qid == 0)
+//         panic("[TTY] shared memory init error");
+//     debug("Shmem ID 0x%lX\n", qid);
+//     buffer = (struct stream *)shmat(qid, NULL, 0);
+//     debug("Shmem addr 0x%lX\n", buffer);
+//     memset(buffer, 0, 0x2000);
 /*
     do {
        dmqid = get_msg(dmkey, IPC_EXIST);
@@ -279,18 +279,35 @@ int main()
         panic("[UART] init error");  
 
     for(;;){
-        struct tty_message msg;
-        if (!(ipc_receive(cap, &msg, sizeof(msg), IPC_NOWAIT) < 0)) {
-            if (msg.type == TTY_PUT_STRING) uart_puts(msg.message);
-        }
+        struct tty_message *msg;
+        uint64_t info, sender;
+        msg = (struct tty_message *)get_ipc_buffer()->msg;
+//        memset(msg, 0, sizeof(msg));
+        info = ipc_nb_recv(cap, &sender);  
+        if((int)(label_from_msginfo_word(info)) < 0) panic("[TTY] info error");
+//debug("\x1b[31m0x%lX\x1b[0m", label_from_msginfo_word(info)); 
+        if (msg->type == TTY_PUT_STRING) uart_puts(msg->message);
+        // ipc_setMR(0, 0x55);
+        // _ipc_reply(msginfo_word_new(0,1,0,0));
+    //    debug("\x1b[31m[TTY]\x1b[0m msg->type %d\n", msg->type);  
+     //   debug("[TTY] received info 0x%lX\n", info);
+     //   memcpy(&msg, get_ipc_buffer()->msg, sizeof(msg));
+
+    //    if (!(ipc_receive(cap, &msg, sizeof(msg), IPC_NOWAIT) < 0)) {
+           
+    //    }
             
-        for (int i=0; i<0x20; i++){
-            if (buffer[i].flag > 0){
-                uart_puts(buffer[i].buf);
-                __atomic_store_n(&buffer[i].flag, 0, __ATOMIC_ACQ_REL);
-            }
+        // for (int i = 0; i < sizeof(msg->message); i++) {
+        //     if (msg->message[i]) uart_putc(msg->message[i]);
+        // }
+
+        // for (int i=0; i<0x20; i++){
+        //     if (buffer[i].flag > 0){
+        //         uart_puts(buffer[i].buf);
+        //         __atomic_store_n(&buffer[i].flag, 0, __ATOMIC_ACQ_REL);
+        //     }
                 
-        }
+        // }
     }
 
 

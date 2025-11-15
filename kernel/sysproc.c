@@ -12,6 +12,12 @@
 
 int sbi_debug_console_write(const char *bytes, unsigned int num_bytes);
 
+inline void __sys_error_return(task_t *t, int err)
+{
+    uint32_t info = msginfo_word_new((uint32_t)err, 0, 0, 0);
+    syscall_set_MR(t, 1, info);
+}
+
 uint64_t sys_fork(void)
 {
     return 0;
@@ -94,53 +100,6 @@ uint64_t sys_sbrk(void)
     return addr;
 }
 
-uint64_t sys_get_msg(void)
-{
-    uint64_t qkey, flags;
-    qkey = syscall_argraw(0);
-    flags = syscall_argraw(1);
-    return ipc_get_msg(qkey, flags);
-}
-
-uint64_t sys_snd_msg(void)
-{
-    uint64_t qid, type, uaddr, size, flags;
-    qid = syscall_argraw(0);
-    type = syscall_argraw(1);
-    uaddr = syscall_argraw(2);
-    size = syscall_argraw(3);
-    flags = syscall_argraw(4);
-    return ipc_snd_msg(qid, type, uaddr, size, flags);
-}
-
-uint64_t sys_rcv_msg(void)
-{
-    uint64_t qid, type, uaddr, size, flags;
-    qid = syscall_argraw(0);
-    type = syscall_argraw(1);
-    uaddr = syscall_argraw(2);
-    size = syscall_argraw(3);
-    flags = syscall_argraw(4);
-    return ipc_rcv_msg(qid, type, uaddr, size, flags);
-}
-
-uint64_t sys_get_shm(void)
-{
-    uint64_t qkey, size, flags;
-    qkey = syscall_argraw(0);
-    size = syscall_argraw(1);
-    flags = syscall_argraw(2);
-    return (uint64_t)ipc_get_shm(qkey, size, flags);
-}
-
-uint64_t sys_att_shm(void)
-{
-    uint64_t shmid, addr, flags;
-    shmid = syscall_argraw(0);
-    addr = syscall_argraw(1);
-    flags = syscall_argraw(2);
-    return (uint64_t)ipc_att_shm(shmid, (const void *)addr, flags);
-}
 
 uint64_t sys_irq_set(void)
 {
@@ -184,47 +143,6 @@ uint64_t sys_snd_sig(void)
     return (uint64_t)signal_send(dst_task, sig, payload);
 }
 
-uint64_t sys_ipc_snd(void)
-{
-    uint64_t id, uaddr, size;
-    id = syscall_argraw(0);
-    uaddr = syscall_argraw(1);
-    size = syscall_argraw(2);
-    task_t *t = mytask();
-    return sys_ipc_send(t, id, uaddr, size);
-}
-
-uint64_t sys_ipc_rcv(void)
-{
-    uint64_t id, uaddr, size, flags;
-    id = syscall_argraw(0);
-    uaddr = syscall_argraw(1);
-    size = syscall_argraw(2);
-    flags = syscall_argraw(3);
-    task_t *t = mytask();
-    return sys_ipc_recv(t, id, uaddr, size, flags);
-}
-
-uint64_t sys_ipc_rpl(void)
-{
-    uint64_t id, uaddr, size;
-    id    = syscall_argraw(0);
-    uaddr = syscall_argraw(1);
-    size  = syscall_argraw(2);
-    task_t *t = mytask();
-    return sys_ipc_replay(t, id, uaddr, size);
-}
-
-uint64_t sys_ipc_cll(void)
-{
-    uint64_t id, umsg, urep, size;
-    id = syscall_argraw(0);
-    umsg = syscall_argraw(1);
-    urep = syscall_argraw(2);
-    size = syscall_argraw(3);
-    task_t *t = mytask();
-    return sys_ipc_call(t, id, umsg, urep, size);
-}
 
 uint64_t sys_endpt_creat(void)
 {
@@ -314,4 +232,104 @@ uint64_t sys_fast_call(void)
     t->trapframe->a6 = 0x107;
 
     return 0x100;
+}
+
+uint64_t __sys_recv(void)
+{
+    int ret;
+    task_t *t = mytask();
+
+    uint64_t cap_id = syscall_argraw(0);
+
+    ret = sys_ipc_recieve(t, cap_id, true);
+    if (ret < 0) __sys_error_return(t, ret);
+
+    // should return bange in a0
+    // it's already in a0
+    // ??? rewrite syscall func
+
+    //debug("\x1b[31m0x%lX\x1b[0m", t->trapframe->a1);
+
+    return t->trapframe->a0;
+}
+
+uint64_t __sys_nb_recv(void)
+{
+    int ret;
+    task_t *t = mytask();
+
+    uint64_t cap_id = syscall_argraw(0);
+
+    ret = sys_ipc_recieve(t, cap_id, false);
+    if (ret < 0) __sys_error_return(t, ret);
+
+    // should return bange in a0
+    // it's already in a0
+    // ??? rewrite syscall func
+
+    //debug("\x1b[31m0x%lX\x1b[0m", t->trapframe->a1);
+
+    return t->trapframe->a0;
+}
+
+uint64_t __sys_send(void)
+{
+    int ret;
+    task_t *t = mytask();
+
+    uint64_t cap_id = syscall_argraw(0);
+
+    ret = sys_ipc_send(t, cap_id, true, false);
+    if (ret < 0) __sys_error_return(t, ret);
+
+    // should return bange in a0
+    // it's already in a0
+    // ??? rewrite syscall func
+
+    return t->trapframe->a0;
+}
+
+uint64_t __sys_nb_send(void)
+{
+    int ret;
+    task_t *t = mytask();
+
+    uint64_t cap_id = syscall_argraw(0);
+
+    ret = sys_ipc_send(t, cap_id, false, false);
+    if (ret < 0) __sys_error_return(t, ret);
+
+    // should return bange in a0
+    // it's already in a0
+    // ??? rewrite syscall func
+
+    return t->trapframe->a0;
+}
+
+uint64_t __sys_call(void)
+{
+    int ret;
+    task_t *t = mytask();
+
+    uint64_t cap_id = syscall_argraw(0);
+
+    ret = sys_ipc_send(t, cap_id, true, true);
+    if (ret < 0) __sys_error_return(t, ret);
+    
+    // should return bange in a0
+    // it's already in a0
+    // ??? rewrite syscall func
+
+    return t->trapframe->a0;
+}
+
+uint64_t __sys_reply(void)
+{
+    int err;
+    task_t *t = mytask();
+//    debug("\x1b[31m[IPC]\x1b[0m reply task %d info 0x%lX\n", t->pid, t->trapframe->a1);
+    err = sys_ipc_reply(t);
+    if (err < 0) __sys_error_return(t, err);
+
+    return t->trapframe->a0;
 }

@@ -4,7 +4,7 @@
 #include <spinlock.h>
 #include <elf.h>
 #include <mmu.h>
-
+#include <memory.h>
 
 
 int flags2perm(int flags)
@@ -151,11 +151,16 @@ int loader_execsvr(uint64_t addr)
     if (uvm_alloc_mmreg(t, 0, 2 * PAGE_SIZE, MM_REG_STACK, PTE_W) < 0)
             panic("[LOADER] ERROR ALOCATING MEM_REG_STACK");
 
+    /// ??? rewrite memory mapping for allocated buf
+    mem_reg_t * mreg = uvm_user_memmap(t, 0, PAGE_SIZE, MAP_MEMIO | MAP_READ | MAP_WRITE, DA2PA(t->ipc_buf));
+
+    t->trapframe->a0 = mreg->addr;
+            
     t->trapframe->epc = elf->entry; // initial program counter = main
     t->trapframe->sp = t->mm->start_stack;   // initial stack pointer
 
 //    debug("[LOADER] Task size is 0x%lX\n", t->mm->task_size);
-    t->state = RUNNABLE;
+    set_task_state(t, RUNNABLE);
     //  debug("[SCHED] new task allocated pid 0x%d state %d PT 0x%lX TrpFr 0x%lX\n", inittask->pid, inittask->state, inittask->pagetable, inittask->trapframe);
 //      debug("[SCHED] context ra 0x%lX sp %lX ecp 0x%lX sp 0x%lX\n", t->context.ra, (uint64)t->context.sp, t->trapframe->epc, t->trapframe->sp);
 

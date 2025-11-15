@@ -18,12 +18,12 @@ typedef enum {
 
 struct vfs_msg
 {
-    int     type;
-    uint64_t pid;
-    int     ret;
+    int          type;
+    uint64_t     pid;
+    int          ret;
     inode_type_t inode_type;
-    char    path[256];
-    int     cap_id;
+    char         path[256];
+    int          cap_id;
 };
 
 

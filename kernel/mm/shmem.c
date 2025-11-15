@@ -2,16 +2,16 @@
 #include <mmu.h>
 
 #include <memory.h>
-#include <ipc.h>
-#include <khash.h>
+//#include <ipc.h>
+//#include <khash.h>
 
-static khash_table_t   *shmemid_table;
-static int shmem_block_id = 1;
+// static khash_table_t   *shmemid_table;
+// static int shmem_block_id = 1;
 
-static inline int shmem_alloc_id()
-{
-    return __atomic_fetch_add(&shmem_block_id, 1, __ATOMIC_ACQ_REL);;
-}
+// static inline int shmem_alloc_id()
+// {
+//     return __atomic_fetch_add(&shmem_block_id, 1, __ATOMIC_ACQ_REL);;
+// }
 
 static int __shmem_alloc_pages(shmem_block_t * shmb)
 {
@@ -47,7 +47,6 @@ int shmem_alloc_memory(shmem_block_t * shmb)
 }
 
 
-/// ??? CHECK and test.
 int shmem_free_memory(shmem_block_t * shmb)
 {
     shmem_page_t    *page, *next;
@@ -67,72 +66,72 @@ int shmem_free_memory(shmem_block_t * shmb)
     return SUCCESS;
 }
 
-static shmem_block_t *shmem_create_memblock(size_t size)
-{
-    shmem_block_t   *shmb;
-    size_t          sz = PGROUNDUP(size);
+// static shmem_block_t *shmem_create_memblock(size_t size)
+// {
+//     shmem_block_t   *shmb;
+//     size_t          sz = PGROUNDUP(size);
 
-    shmb = malloc(sizeof(shmem_block_t));
-    if (shmb == NULL){
-        panic("[SHMEM] can to allocate mem");
-        return NULL;
-    }
+//     shmb = malloc(sizeof(shmem_block_t));
+//     if (shmb == NULL){
+//         panic("[SHMEM] can to allocate mem");
+//         return NULL;
+//     }
         
     
-    shmb->size = size;
-    shmb->npages = sz >> PAGE_SHIFT;
+//     shmb->size = size;
+//     shmb->npages = sz >> PAGE_SHIFT;
 
-    if (__shmem_alloc_pages(shmb) != SUCCESS){
-        mfree(shmb);
-        return NULL;
-    }
+//     if (__shmem_alloc_pages(shmb) != SUCCESS){
+//         mfree(shmb);
+//         return NULL;
+//     }
 
 
 
-    return shmb;
-}
+//     return shmb;
+// }
 
-shmqueue_t *shmem_create(uint64_t key, size_t size, uint64_t flags)
-{
-    shmqueue_t *shm;
-    shm = (shmqueue_t *)malloc(sizeof(shmqueue_t));
-    if (shm == NULL){
-        panic("IPC cannot alloc mem");
-        return 0;
-    }
+// shmqueue_t *shmem_create(uint64_t key, size_t size, uint64_t flags)
+// {
+//     shmqueue_t *shm;
+//     shm = (shmqueue_t *)malloc(sizeof(shmqueue_t));
+//     if (shm == NULL){
+//         panic("IPC cannot alloc mem");
+//         return 0;
+//     }
         
-    initlock(&shm->lock, "shm lock");
+//     initlock(&shm->lock, "shm lock");
 
-    shm->id = shmem_alloc_id();
-    shm->key = key;
-    shm->flags = flags;
-    shm->task = mytask();
+//     shm->id = shmem_alloc_id();
+//     shm->key = key;
+//     shm->flags = flags;
+//     shm->task = mytask();
 
-    shm->memblock = shmem_create_memblock(size);
-    if (shm->memblock == NULL){
-        mfree(shm);
-        return 0;
-    }
+//     shm->memblock = shmem_create_memblock(size);
+//     if (shm->memblock == NULL){
+//         mfree(shm);
+//         return 0;
+//     }
 
-    if (khash_insert(shmemid_table, shm->id, shm)){
-        panic("[SHMEM] ins memblock to hash err");
-        mfree(shm);
-        return NULL;
-    }
-    return shm;
-}
+//     if (khash_insert(shmemid_table, shm->id, shm)){
+//         panic("[SHMEM] ins memblock to hash err");
+//         mfree(shm);
+//         return NULL;
+//     }
+//     return shm;
+// }
 
-shmqueue_t *shmem_lookup(uint64_t shmid)
-{
-    return khash_lookup(shmemid_table, shmid);
-}
+// shmqueue_t *shmem_lookup(uint64_t shmid)
+// {
+//     return khash_lookup(shmemid_table, shmid);
+// }
 
 
-kerrno_t shmem_init(void)
-{
-    // 8 bits -> 256 buckets
-    shmemid_table = khash_create(8);
-    if (shmemid_table == NULL)
-        return -ENOMEM;
-    return SUCCESS;
-}
+// kerrno_t shmem_init(void)
+// {
+//     // 8 bits -> 256 buckets
+//     shmemid_table = khash_create(8);
+//     if (shmemid_table == NULL)
+//         return -ENOMEM;
+//     return SUCCESS;
+// }

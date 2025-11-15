@@ -8,6 +8,7 @@
 #include <signals.h>
 #include <endpoint.h>
 #include <cap.h>
+#include <ipc.h>
 
 register struct cpu *current_cpu __asm__("tp");
 
@@ -91,7 +92,9 @@ typedef struct trapframe
 enum task_state
 {
     NEW,
-    BLOCKED,
+    BLOCKED_RECV,
+    BLOCKED_SEND,
+    BLOCKED_REPLY,
     SLEEPING,
     RUNNABLE,
     RUNNING,
@@ -110,7 +113,7 @@ typedef struct task
     struct spinlock     lock;
 
     // t->lock must be held when using these:
-    enum task_state     state; // Process state
+    uint64_t            state; // Process state
     void                *chan;              // If non-zero, sleeping on chan
     int                 killed;             // If non-zero, have been killed
     int                 xstate;             // Exit status to be returned to parent's wait
@@ -135,15 +138,26 @@ typedef struct task
     list_head_t         tasklist;
 //    uint64_t            irq_flag;
 //    void                *irq_handler;
-
+    list_head_t         eplist;             // link to endpoint list
+    void                *ipc_buf;
+//    uint64_t            ipc_regs[IPC_MAX_REGS];
     struct spinlock     cap_lock;
     cap_entry_t         caps[MAX_CAPS];
+
+    bool                do_call;
     struct spinlock     rep_lock;
+    int                 reply_cap;
     struct ipc_msg      *replay_msg;
 
+//    struct task         *reply_to;  // make it as cap
     struct signal_hand   *sighand;
 
 } task, task_t;
+
+#define TASK_STATE_MASK (BIT(16)-1U)
+
+#define get_task_state(task)     ((task->state)&TASK_STATE_MASK)
+#define set_task_state(task, st) (task->state = (task->state  & ~TASK_STATE_MASK)|(st & TASK_STATE_MASK))
 
 
 // Per-CPU state.
@@ -185,6 +199,9 @@ void sched_task_wakeup(void *chan);
 void sched_wakeup(task_t *t);
 void sched_sleep();
 void sched_task_sleep(void *chan, struct spinlock *lk);
+void sched_task_block(void *chan, struct spinlock *lk, enum task_state state);
+void sched_task_unblock(void *chan);
+void sched_task_update_block(task_t *t, void *chan, enum task_state state);
 void sched_task_exit(int status);
 int sched_alloc_pid(void);
 task_t *sched_find_task(uint64_t pid);

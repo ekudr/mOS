@@ -7,8 +7,15 @@ typedef enum {
     KO_FASTCALL,
     KO_REPLAY,
     KO_IRQ,
+    KO_FRAME,
     KO_SHMEM,
 } ko_type_t;
+
+#define KO_OWNER(ko)    (((kobject_t *)ko)->owner)
+#define KO_LOCK(ko)     (&((kobject_t *)ko)->lock)
+#define KO_TYPE(ko)    (((kobject_t *)ko)->type)
+#define lock_ko(ko)     acquire(&((kobject_t *)ko)->lock)
+#define unlock_ko(ko)   release(&((kobject_t *)ko)->lock)
 
 struct task;
 
@@ -17,12 +24,14 @@ typedef struct kobject
     uint32_t    type;
     uint64_t    refcount;
     struct task *owner;
+    spinlock_t  lock;
 } kobject_t;
 
 static inline kobject_t *ko_init(kobject_t *ko, struct task *task, uint32_t type)
 {
     if (ko == NULL) return NULL;
     __atomic_store_n(&ko->refcount, 1, __ATOMIC_RELEASE);
+    initlock(&ko->lock, "obj");
     ko->type = type;
     ko->owner = task;
     return ko;

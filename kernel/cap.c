@@ -7,13 +7,25 @@
 #include <shmem.h>
 
 
+// void *create_cnode(void)
+// {
+//     void *cnode;
+//     uint64_t ppn = pgalloc();
+//     if (!ppn) return NULL;
+
+//     cnode = (void *)PPN2DA(ppn);
+//     memset(cnode, 0, PAGE_SIZE);
+
+//     return cnode;
+// }
+
 int cap_install(struct task *t, void *obj, cap_type_t type, uint32_t rights)
 {
     if (!t) return -EINVAL;
     acquire(&t->cap_lock);
     for (int i = 0; i < MAX_CAPS; i++) {
-        if (!t->caps[i].valid) {
-            t->caps[i].valid = true; 
+        if (t->caps[i].type == CAP_NONE) {
+///            t->caps[i].valid = true; 
             t->caps[i].type = type;
             t->caps[i].obj = ko_get((kobject_t *)obj);
             t->caps[i].rights = rights;
@@ -26,17 +38,17 @@ int cap_install(struct task *t, void *obj, cap_type_t type, uint32_t rights)
     return -ENOSPC; /* table full */
 }
 
-cap_entry_t *cap_lookup(task_t *t, int id)
+cap_entry_t *cap_lookup(task_t *t, int cap_id)
 {
-    if (!t || id < 0 || id >= MAX_CAPS)
+    if (!t || cap_id < 0 || cap_id >= MAX_CAPS)
         return NULL;
 
     acquire(&t->cap_lock);        
-    if (!t->caps[id].valid){
+    if (t->caps[cap_id].type == CAP_NONE){
         release(&t->cap_lock);
         return NULL;
     }
-    cap_entry_t *e = &t->caps[id];
+    cap_entry_t *e = &t->caps[cap_id];
     release(&t->cap_lock);
 
     return e;
@@ -52,21 +64,21 @@ void cap_destroy(kobject_t *ko)
     }
 }
 
-void cap_free(task_t *t, int id)
+void cap_free(task_t *t, int cap_id)
 {    
-    if (!t || id < 0 || id >= MAX_CAPS) return; 
+    if (!t || cap_id < 0 || cap_id >= MAX_CAPS) return; 
     acquire(&t->cap_lock);        
     
-    if (!t->caps[id].valid){
+    if (t->caps[cap_id].type == CAP_NONE){
         release(&t->cap_lock);
         return;
     }    
     
-    kobject_t *obj = (kobject_t *)t->caps[id].obj;
-    t->caps[id].obj = NULL;    
-    t->caps[id].valid = false;
-    t->caps[id].type = CAP_NONE;        
-    t->caps[id].rights = 0;
+    kobject_t *obj = (kobject_t *)t->caps[cap_id].obj;
+    t->caps[cap_id].obj = NULL;    
+///    t->caps[id].valid = false;
+    t->caps[cap_id].type = CAP_NONE;        
+    t->caps[cap_id].rights = 0;
     release(&t->cap_lock);
 //    debug("[CAP] free kernel object refcount %d\n", obj->refcount);
     if (obj) ko_put(obj, cap_destroy);
@@ -112,10 +124,12 @@ int sys_endpoint_create(task_t *t, uint32_t rights)
     if (ep == NULL) return -ENOMEM;    
 
     ep = (endpoint_t *)ko_init((kobject_t *)ep, t, KO_ENDPOINT);
-    initlock(&ep->lock, "endpoint");
-    list_init(&ep->msglist);
-    ep->owner = t;
+//    initlock(&ep->lock, "endpoint");
+//    list_init(&ep->msglist);
+    list_init(&ep->queue);
+//    ep->owner = t;
     ep->count = 0;
+    ep->state = EP_STATE_IDLE;
 
     int ret = cap_install(t, ep, CAP_ENDPOINT, rights);
     if (ret < 0)
@@ -230,13 +244,15 @@ int cap_grant_into(task_t *from, int from_cap_id,
     
     // Lookup 'from' capability
     from_ce = cap_lookup(from, from_cap_id);
-    if (!from_ce || !from_ce->valid) 
+    if (!from_ce || (from_ce->type == CAP_NONE)) 
         return -EINVAL;
 
     // check 'from' has grant right on the cap
     if (!(from_ce->rights & CRIGHT_GRANT))
         return -ENOPERM;
 
+    // copy original rights if req_rights == 0
+    if (!req_rights) req_rights = from_ce->rights;
     // requested_rights must be subset of from_ce->rights
     if ((req_rights & ~from_ce->rights) != 0)
         return -EINVAL;
@@ -247,16 +263,19 @@ int cap_grant_into(task_t *from, int from_cap_id,
         return -EINVAL;
 
     // Lock both cap tables (use address compare to avoid deadlocks)
-    if (from < to) {
-        acquire(&from->cap_lock);
-        acquire(&to->cap_lock);
-    } else if (from > to) {
-        acquire(&to->cap_lock);
+    if (from == to) {
         acquire(&from->cap_lock);
     } else {
-        acquire(&from->cap_lock);
+        if (from < to) {
+            acquire(&from->cap_lock);
+            acquire(&to->cap_lock);
+        } else if (from > to) {
+            acquire(&to->cap_lock);
+            acquire(&from->cap_lock);
+        } else {
+            acquire(&from->cap_lock);
+        }        
     }
-
     // If to_slot requested, verify free; else find free slot
 
     if (to_slot >= 0) {
@@ -265,7 +284,7 @@ int cap_grant_into(task_t *from, int from_cap_id,
             goto out_unlock;
         }
         to_ce = &to->caps[to_slot];
-        if (to_ce->valid) {
+        if (to_ce->type) {
             new_cap = -EEXIST;
         goto out_unlock;
     }
@@ -274,7 +293,7 @@ int cap_grant_into(task_t *from, int from_cap_id,
         // find free slot
         i = -1;
         for (int j = 0; j < MAX_CAPS; j++) {
-            if (!to->caps[j].valid) { 
+            if (to->caps[j].type == CAP_NONE) { 
                 i = j; 
                 break; 
             }
@@ -288,28 +307,31 @@ int cap_grant_into(task_t *from, int from_cap_id,
     }
 
     // Install capability into recipient's cap table 
-    to_ce->valid = true;
     to_ce->type = from_ce->type;
     to_ce->obj = ko_get(obj);
     to_ce->rights = req_rights;
+
     
-    // bump kernel object refcount 
-//    kernel_object_ref(obj);
     new_cap = i;
 
 out_unlock:
 
-    if (from < to) {
-        release(&to->cap_lock);
-        release(&from->cap_lock);
-    } else if (from > to) {
-        release(&from->cap_lock);
+    if (from == to) {
         release(&to->cap_lock);
     } else {
-        release(&from->cap_lock);
+        if (from < to) {
+            release(&to->cap_lock);
+            release(&from->cap_lock);
+        } else if (from > to) {
+            release(&from->cap_lock);
+            release(&to->cap_lock);
+        } else {
+            release(&from->cap_lock);
+        }
     }
     return new_cap;
 }
+
 
 long sys_cap_grant(int from_id, uint64_t to_pid, int to_slot, uint32_t req_rights)
 {
@@ -325,10 +347,10 @@ long sys_cap_grant(int from_id, uint64_t to_pid, int to_slot, uint32_t req_right
  */
 int sys_cap_transfer(int src_cap, int dest_cap, uint32_t req_rights)
 {
-    debug("[CAP] transfer cap %d to %d\n", src_cap, dest_cap);
+//    debug("[CAP] transfer cap %d to %d\n", src_cap, dest_cap);
     task_t *src_task = mytask();
     task_t *dest_task = cap_to_task(src_task, dest_cap);
-    debug("[CAP] transfer from task %d to %d\n", src_task->pid, dest_task->pid);
+//    debug("[CAP] transfer from task %d to %d\n", src_task->pid, dest_task->pid);
     if (!dest_task || src_task == dest_task) return -EINVAL;
     return cap_grant_into(src_task, src_cap, dest_task, -1,req_rights);
 }

@@ -63,7 +63,7 @@ __split_chunk(mchunkptr_t chunk, uint64_t size)
     } else {
         __add_to_free(nchunk);
     }    
-//    debug("The new chunk 0x%lX sz 0x%lX\n", nchunk, nchunk->size);
+ //   debug("The new chunk 0x%lX sz 0x%lX\n", nchunk, nchunk->size);
 //    debug("The requested chunk 0x%lX sz 0x%lX\n", chunk, chunk->size);
     return chunk;
 }
@@ -73,7 +73,7 @@ __find_free(size_t size)
 {
     list_head_t *chpos;
 //    mem_heap_t *heap;
-    mem_chunk_t *chunk;
+    mchunkptr_t chunk;
 //    debug("Looking memsize 0x%lX\n", size);
 
     // Fast first
@@ -86,9 +86,11 @@ __find_free(size_t size)
             return chunk2mem(chunk);
         }
     }
+    
 
-    list_for_each(chpos, &gp_mmgr->qfree) {
-        chunk = container_of(chpos, mem_chunk_t, freelist);
+    if (list_is_empty(&gp_mmgr->qfree)) request_heap(size);
+
+    list_for_each_entry(chunk, &gp_mmgr->qfree, freelist) {
         if(chunk->size >= size) {
 //            debug("Checking chunk 0x%lX sz 0x%lX\n", chunk, chunk->size);
             list_del(&chunk->freelist);
@@ -100,6 +102,7 @@ __find_free(size_t size)
             return chunk2mem(chunk);
         }
     }
+
     return NULL;
 }
 

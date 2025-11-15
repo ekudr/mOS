@@ -1315,3 +1315,8 @@ int mmc_init()
 
     return err;
 }
+
+uint64_t get_card_capacity()
+{
+    return sd_mmc.card->capacity_user;
+}

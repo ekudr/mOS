@@ -29,14 +29,12 @@
 #define SYS_debug   22
 #define SYS_mmap    23
 
-#define SYS_get_msg 30
-#define SYS_snd_msg 31
-#define SYS_rcv_msg 32
-
-#define SYS_shm_get 33
-#define SYS_shm_att 34
-#define SYS_shm_det 35
-#define SYS_shm_ctl 36
+#define SYS_recv    30
+#define SYS_nb_recv 31
+#define SYS_send    32
+#define SYS_nb_send 33
+#define SYS_call    34
+#define SYS_reply   35
 
 #define SYS_sig_act 40
 #define SYS_sig_snd 41
@@ -47,10 +45,10 @@
 
 #define SYS_endpt_crt 60
 
-#define SYS_ipc_snd 62
-#define SYS_ipc_rcv 63
-#define SYS_ipc_call 64
-#define SYS_ipc_rpl 65
+// #define SYS_ipc_snd 62
+// #define SYS_ipc_rcv 63
+// #define SYS_ipc_call 64
+// #define SYS_ipc_rpl 65
 
 #define SYS_cap_crt 100
 #define SYS_cap_grant 101

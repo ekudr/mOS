@@ -54,6 +54,59 @@ syscall_argraw(int n)
     return -1;
 }
 
+uint64_t syscall_get_MR(struct task *t, int n)
+{
+    switch (n)
+    {
+    case 0:
+        return t->trapframe->a0;
+    case 1:
+        return t->trapframe->a1;
+    case 2:
+        return t->trapframe->a2;
+    case 3:
+        return t->trapframe->a3;
+    case 4:
+        return t->trapframe->a4;
+    case 5:
+        return t->trapframe->a5;
+    case 6:
+        return t->trapframe->a6;
+    }
+    panic("get mr");
+    return -EINVAL;   
+}
+
+void syscall_set_MR(struct task *t, int n, uint64_t val)
+{
+    switch (n)
+    {
+    case 0:
+        t->trapframe->a0 = val;
+        break;
+    case 1:
+        t->trapframe->a1 = val;
+        break;
+    case 2:
+        t->trapframe->a2 = val;
+        break;
+    case 3:
+        t->trapframe->a3 = val;
+        break;
+    case 4:
+        t->trapframe->a4 = val;
+        break;
+    case 5:
+        t->trapframe->a5 = val;
+        break;
+    case 6:
+        t->trapframe->a6 = val;
+        break;
+    default:
+        panic("set mr");
+    }
+}
+
 // Fetch the Nth 64-bit system call argument.
 void
 syscall_argint(int n, int *ip)
@@ -81,20 +134,21 @@ static uint64_t (*syscalls[])(void) = {
     [SYS_debug]     =  sys_debug,
     [SYS_mmap]      =  sys_mmap,
     [SYS_sbrk]      =  sys_sbrk,
-    [SYS_get_msg]   =  sys_get_msg,
-    [SYS_snd_msg]   =  sys_snd_msg,
-    [SYS_rcv_msg]   =  sys_rcv_msg,
-    [SYS_shm_get]   =  sys_get_shm,
-    [SYS_shm_att]   =  sys_att_shm,
+    [SYS_recv]      =  __sys_recv,
+    [SYS_nb_recv]   =  __sys_nb_recv,
+    [SYS_send]      =  __sys_send,
+    [SYS_nb_send]   =  __sys_nb_send,
+    [SYS_call]      =  __sys_call,
+    [SYS_reply]    =  __sys_reply,
     [SYS_irq_set]  =  sys_irq_set,
     [SYS_irq_act]  =  sys_irq_act,
     [SYS_sig_act]   = sys_act_sig,    
     [SYS_sig_snd]   = sys_snd_sig,
     [SYS_sig_ret]   = usersigret,
-    [SYS_ipc_snd]   = sys_ipc_snd,
-    [SYS_ipc_rcv]   = sys_ipc_rcv,
-    [SYS_ipc_rpl]   = sys_ipc_rpl,
-    [SYS_ipc_call]   = sys_ipc_cll,
+    // [SYS_ipc_snd]   = sys_ipc_snd,
+    // [SYS_ipc_rcv]   = sys_ipc_rcv,
+    // [SYS_ipc_rpl]   = sys_ipc_rpl,
+    // [SYS_ipc_call]   = sys_ipc_cll,
     [SYS_endpt_crt] = sys_endpt_creat,
     [SYS_cap_grant] = sys_cap_grnt,
     [SYS_cap_transfer] = __sys_cap_transfer,
@@ -127,6 +181,7 @@ syscall(void)
                 t->pid, t->name, num);
         t->trapframe->a0 = -1;
       }
-    
+
+
 //    debug("[SYSCALL] syscall %d from task %d\n", num, t->pid);
 }

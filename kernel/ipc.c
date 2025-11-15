@@ -4,496 +4,283 @@
 #include <list.h>
 #include <shmem.h>
 #include <khash.h>
+#include <sysproc.h>
 
-ipc_manager_t *gp_ipcm;
+// ipc_manager_t *gp_ipcm;
 
-static khash_table_t   *mid_table;
-static int ipc_id = 1;
+// static khash_table_t   *mid_table;
+// static int ipc_id = 1;
 
-static inline int ipc_alloc_mid()
+// static inline int ipc_alloc_mid()
+// {
+//     return __atomic_fetch_add(&ipc_id, 1, __ATOMIC_ACQ_REL);;
+// }
+
+
+
+
+const int msgRegisters[] = {
+    2, 3, 4, 5, 6
+};
+
+int copy_MRs(task_t *sender, uint64_t *sendBuf, task_t *receiver,
+               uint64_t *recvBuf, uint64_t n)
 {
-    return __atomic_fetch_add(&ipc_id, 1, __ATOMIC_ACQ_REL);;
+    uint64_t i;
+
+    /* Copy inline words */
+    for (i = 0; i < n && i < IPC_MAX_REGS; i++) {
+        syscall_set_MR(receiver, msgRegisters[i],
+                    syscall_get_MR(sender, msgRegisters[i]));
+    }
+
+    if (!recvBuf || !sendBuf) {
+        return i;
+    }
+    
+    /* Copy out-of-line words */
+    for (; i < n; i++) {
+        recvBuf[i + 1] = sendBuf[i + 1];        
+    }
+
+    return i;
+}
+
+static inline uint64_t *get_extra_caps_pointer(task_t * t)
+{
+    uint64_t *caps = (uint64_t *)t->ipc_buf + IPC_MAX_MSG_LEN + 2;
+    return caps;
+}
+
+static uint64_t ipc_caps_transfer(uint64_t info, task_t *sender, task_t *receiver)
+{
+    int i;
+
+    ipc_msg_info_t mi = msginfo_from_word(info);
+    
+    uint64_t *sender_caps = get_extra_caps_pointer(sender);
+//    debug("\x1b[31m[IPC]\x1b[0m ipc_buf 0x%lX caps 0x%lX\n", sender->ipc_buf, sender_caps);
+    uint64_t *receiver_caps = get_extra_caps_pointer(receiver);
+
+    for (i = 0; i < IPC_MAX_CAPS && sender_caps[i]!= 0; i++) {
+        // ??? check what rights should be provide
+        receiver_caps[i] = cap_grant_into(sender, sender_caps[i], receiver, -1, 0);
+    }
+
+    mi.extra_caps = i;
+    
+    info = word_from_msginfo(&mi);
+    return info;
+}
+
+void do_ipc_transfer(task_t *sender, task_t *receiver)
+{
+    int msg_transferred;
+    uint64_t info = sender->trapframe->a1;
+    ipc_msg_info_t mi = msginfo_from_word(info);
+    
+    msg_transferred = copy_MRs(sender, (uint64_t *)sender->ipc_buf,
+                                receiver, (uint64_t *)receiver->ipc_buf, mi.length);
+      
+    // Transfer extra caps
+    if (xcaps_from_msginfo_word(info))
+    {
+        ipc_caps_transfer(info, sender, receiver);
+    }
+  
+    // update message info on transferred msg and caps
+
+    mi.length = msg_transferred;
+
+    info = word_from_msginfo(&mi);
+    syscall_set_MR(receiver, 1, info);
 }
 
 int ipc_init(void)
 {
-    gp_ipcm = (ipc_manager_t *)malloc(sizeof(ipc_manager_t));
-    initlock(&gp_ipcm->lock, "ipcm_lock");
-    list_init(&gp_ipcm->qlist);
-    list_init(&gp_ipcm->shqlist);
-        // 8 bits -> 256 buckets
-    mid_table = khash_create(8);
-    if (mid_table == NULL)
-        panic("[IPC] can not create hash table");
-    shmem_init();
+    // gp_ipcm = (ipc_manager_t *)malloc(sizeof(ipc_manager_t));
+    // initlock(&gp_ipcm->lock, "ipcm_lock");
+    // list_init(&gp_ipcm->qlist);
+    // list_init(&gp_ipcm->shqlist);
+    //     // 8 bits -> 256 buckets
+    // mid_table = khash_create(8);
+    // if (mid_table == NULL)
+    //     panic("[IPC] can not create hash table");
+    // shmem_init();
+
     return 0;
 }
 
-static inline int queue_push(struct endpoint *ep, struct ipc_msg *msg)
-{
-    if (ep->count >= 10) return -EAGAIN;
-    acquire(&ep->lock);
-    list_add_tail(&ep->msglist, &msg->mlist);
-    ep->count++;
-    
-    // wake up owner of endpoint
-    sched_task_wakeup(ep->owner);
-
-    // sender go sleep
-    release(&ep->lock);
-    return SUCCESS;
-}
-
-/*
- * Endpoint has to belocked before run
- */
-static inline struct ipc_msg *queue_pop(struct endpoint *ep)
-{
-    struct ipc_msg *m;
-
-    if (list_is_empty(&ep->msglist)) return NULL;
-
-    m = list_first_entry(&ep->msglist, struct ipc_msg, mlist);
-//    debug("[IPC_RCV] message from queue = 0x%lX\n", m);
-    
-    list_del(&m->mlist);
-    ep->count--;
-     
-    return m;
-}
 
 
-
-uint64_t ipc_get_msg(uint64_t qkey, uint64_t flags)
-{
-    mqueue_t *q;
-    //    debug("Get message queue qkey 0x%lX flags 0x%lX\n", qkey, flags);
-    if (qkey == 0)
-        return 0;
-
-    acquire(&gp_ipcm->lock);
-    list_for_each_entry(q, &gp_ipcm->qlist, qlist){
-        if (q->qkey == qkey)
-            goto found;
-    }
-
-    if (flags & IPC_EXIST){
-        release(&gp_ipcm->lock);
-        return 0;
-    }
-
-    q = (mqueue_t *)malloc(sizeof(mqueue_t));
-    if (q == NULL)
-        panic("IPC cannot alloc mem");
-
-    initlock(&q->lock, "q lock");
-//    list_init(&q->mlist);
-    q->id    = ipc_alloc_mid();
-    q->qkey  = qkey;
-    q->flags = flags;
-    q->task  = mytask();
-
-    if (khash_insert(mid_table, q->id, q)){
-        panic("[SHMEM] ins memblock to hash err");
-        mfree(q);
-        return 0;
-    }
-    list_init(&q->mlist);
-    list_add(&gp_ipcm->qlist, &q->qlist);
-
-found:
-    release(&gp_ipcm->lock);
-//        debug("Return qid 0x%lX\n", q->id);
-    return (uint64_t)q->id;
-}
-
-/*
- * Send the IPC message
- * qid - queue ID
- * type - message type
- * ubuf - user space address of message
- * size - message size
- * flags - flags
- */
-int ipc_snd_msg(uint64_t qid, uint64_t type, uintptr_t ubuf, uint64_t size, uint64_t flags)
-{
-    mqueue_t *q;
-    ipc_msg_t *msg;
-    task_t *t;
-//    debug("Send msg qid 0x%lX type %d ubuf 0x%lX size %d\n", qid, type, ubuf, size);
-    t = mytask();
-    // should I check the task is valid ???????????
-
-    if (qid == 0)
-        return -ENOENT;
-    q = khash_lookup(mid_table, qid);
-    if (q == NULL)
-        return -ENOENT;
-    // ADD CHECKING RIGHTS TO ACCESS
-
-    msg = malloc(sizeof(ipc_msg_t) + size);
-    msg->type = type;
-//    list_init(&msg->mlist);
-    if (size)
-    {
-        if (mmu_user_copyin(t->pagetable, (char *)&msg->message, ubuf, size) < 0)
-        {
-            mfree(msg);
-            return -1;
-        }
-    }
-
-    acquire(&q->lock);
-    list_add_tail(&q->mlist, &msg->mlist);
-    release(&q->lock);
-    // wakeup waiters
-    sched_task_wakeup(&q->mlist);
-    return SUCCESS;
-}
-
-/*
- * Receive the IPC message
- * qid - queue ID
- * type - message type
- * ubuf - user space address of message
- * size - message size
- * flags - flags
- */
-int ipc_rcv_msg(uint64_t qid, uint64_t type, uintptr_t ubuf, uint64_t size, uint64_t flags)
-{
-    mqueue_t *q;
-    int found;
-    ipc_msg_t *msg;
-    task_t *t;
-
-    t = mytask();
-    // should I check the task is valid ???????????
-//    debug("Task %d receive msg qid 0x%lX type %d ubuf 0x%lX size %d\n", t->pid, qid, type, ubuf, size);
-
-    if (qid == 0)
-        return -ENOENT;
-    q = khash_lookup(mid_table, qid);
-    if (q == NULL)
-        return -ENOENT;
-//    debug("[IPC] queue at 0x%lX\n", q);
-    // ADD CHECKING RIGHTS TO ACCESS
-
-    acquire(&q->lock);
-    if (list_is_empty(&q->mlist)) {
-        if (flags & IPC_NOWAIT)
-            return 0;
-        sched_task_sleep(&q->mlist, &q->lock);
-    }
-
-    // get next message
-    found = 0;
-    do {
-        list_for_each_entry(msg, &q->mlist, mlist) {
-            if (msg->type == type) {
-                list_del(&msg->mlist);
-                found = 1;
-                break;
-            }
-        }
-        if (found || flags & IPC_NOWAIT)
-            break;
-        sched_task_sleep(&q->mlist, &q->lock);
-    } while (msg->type != type);
-
-    release(&q->lock);
-//    debug("msg type %d\n", msg->type);
-    if (found == 0 && flags & IPC_NOWAIT)
-        return 0;
-    if (size) {
-        if (mmu_user_copyout(t->pagetable, ubuf, (char *)&msg->message, size) < 0) {
-            /// return the message in the list
-            acquire(&q->lock);
-            list_add(&q->mlist, &msg->mlist);
-            release(&q->lock);
-            return -1; // return copy error
-        }
-    }
-    mfree(msg);
-    return 1;
-}
-
-/*
- * Create shared memory segment
- */
-uint64_t ipc_get_shm(uint64_t key, size_t size, uint64_t flags)
-{
-    shmqueue_t *shm;
-//        debug("Get message queue qkey 0x%lX flags 0x%lX\n", key, flags);
-    if (key == 0)
-        return 0;
-
-    acquire(&gp_ipcm->lock);
-    list_for_each_entry(shm, &gp_ipcm->shqlist, shqlist){
-        if (shm->key == key)
-            goto found;        
-    }
-
-    if (flags & IPC_EXIST){
-        release(&gp_ipcm->lock);
-        return 0;
-    }
-
-    shm = shmem_create(key, size, flags);
-    if (shm == NULL){
-        release(&gp_ipcm->lock);
-        return 0;
-    }
-
-    list_add(&gp_ipcm->shqlist, &shm->shqlist);
-
-found:
-    release(&gp_ipcm->lock);
-//    debug("Return qid 0x%lX - 0x%lX pages\n",shm->id, shm->memblock->npages);
-    return shm->id;
-}
-
-
-void *ipc_att_shm(uint64_t shmid, const void *addr, int flags)
-{
-    shmqueue_t *q;
-    task_t      *t;
-    pagetable_t pgtable;
-    uint64_t    va, sz;
-    shmem_page_t *p;
-//    debug("[IPC] shmat id 0x%lX addr 0x%lX fl 0x%lX\n", shmid, addr, flags);
-    if (shmid == 0)
-        return NULL;
-
-    t = mytask();
-    q = shmem_lookup(shmid);
-    if (q == NULL)
-        return NULL;
-
-    sz = q->memblock->npages << PAGE_SHIFT;
-
-    mem_reg_t *mreg = uvm_alloc_vmem(t, (uint64_t)addr, sz);
-    if (mreg == NULL){
-        panic("[IPC] can not allocate memreg");
-        return NULL;      
-    }
-
-    mreg->shmem_block = q->memblock;
-    pgtable = t->mm->pagetable;
-
-    va = mreg->addr;
-    p  = q->memblock->head;
-    for (uint64_t a = va, i = 0; i < q->memblock->npages; i++, a += PAGE_SIZE){
-        uint64_t pa = p->ppn << PAGE_SHIFT;
-        if (p == NULL){
-            panic("[IPC] shmem attach not full memblock");
-            break;
-        }        
-//        debug("Mapping va 0x%lX pa 0x%lX\n", a, pa);
-        if (mmu_map_pages(pgtable, a, PAGE_SIZE, pa, PTE_R | PTE_U | PTE_W) != SUCCESS)
-            return NULL; 
-        p = p->next;    
-
-        
-    }
-
-    return (void *)va;
-}
 
 
 /*
  *  Syscall IPC send
  *  t - task sender
- *  id - capability id of sender task
- *  uadd - message address in userland
- *  size - size of message
+ *  cap_id - capability id of sender task
+ *  return status
  */
-uint64_t sys_ipc_send(task_t *t, uint32_t cap_id, uint64_t uaddr, uint64_t size)
+int sys_ipc_send(task_t *t, int cap_id, bool is_blocking, bool is_call)
 {
-    if (!size || !uaddr) return -EINVAL;
-
     cap_entry_t *ce = cap_lookup(t, cap_id);
-//    debug("[IPC_SND] cap lookup %d ce 0x%lX ep 0x%lX msg 0x%lX\n", id, ce, ce->obj, msg);
-    if (!ce) return -ECAPINVAL;
+    if (!ce)  return -ERR_CAP_INVAL;
 
     if (ce->type != CAP_ENDPOINT || !(ce->rights & CRIGHT_SND))
         return -ENOPERM;
 
     endpoint_t *ep = (endpoint_t *)ce->obj;
 
-    ipc_msg_t *msg = malloc(sizeof(ipc_msg_t) + size);
-//    debug("[IPC] send cap %d msg 0x%lX size %d\n", id, uaddr, size);
-    if (!msg) return -ENOMEM;
-//    debug("[IPC] alloc meessage 0x%lX\n", msg);
-
-    if (mmu_user_copyin(t->pagetable, (char *)&msg->message, uaddr, size) < 0){
-        mfree(msg);
-        return -EINVAL;
-    }
-
-    msg->reply = 0;
-
-    if (queue_push(ep, msg) < 0) {
-        mfree(msg);
-        return -EAGAIN;
-    }
+    lock_ko(ep);
+//    debug("\x1b[31m[IPC]\x1b[0m send task %d ep stat %d\n", t->pid, ep->state);
+    switch (ep->state)
+    {
+    case EP_STATE_IDLE:
+    case EP_STATE_SEND:
+        if (is_blocking) {
+        //    enqueue(t);
+            t->do_call = is_call;
+            list_add_tail(&ep->queue, &t->eplist);
+            ep->state = EP_STATE_SEND;
+            sched_task_block(ep, KO_LOCK(ep), BLOCKED_SEND);
+    //        sched_task_sleep(t, KO_LOCK(ep));
+        }
+        break;
     
+    case EP_STATE_RECV:
+#ifdef __DEBUG__
+        if (list_is_empty(&ep->queue)) panic("endpoint queue empty");
+#endif
+// debug("\x1b[31m[IPC]\x1b[0m send task %d\n", t->pid);     
+        task_t *receiver = list_first_entry(&ep->queue, struct task, eplist);
+        list_del(&receiver->eplist);
+
+        if (list_is_empty(&ep->queue)) ep->state = EP_STATE_IDLE;
+        do_ipc_transfer(t, receiver);
+
+        task_t *server = KO_OWNER(ep);
+        if (is_call) {
+            
+            int rpl_cap = cap_replay_install(server, t);
+            if (rpl_cap < 0) return rpl_cap;
+
+            server->reply_cap = rpl_cap;
+            
+        }
+//        sched_task_wakeup(receiver);
+        sched_task_unblock(ep);
+
+        if (is_call) sched_task_block(t, KO_LOCK(ep), BLOCKED_SEND);
+        break;
+    }
+    unlock_ko(ep);
+
+
     return SUCCESS;
 }
+
+
 
 /*
  *  Syscall IPC receive
  *  t - task receiver
- *  id - capability id of sender task
- *  uadd - message address in userland
- *  size - size of message
- *  flags - flags (IPC_NOWAIT)
- *  returns reply cap id
+ *  cap_id - capability id of sender task
+ *  info - message info word
+ *  is_blocking - blocking/non-blocking receive
+ *  returns message info
  */
-uint64_t sys_ipc_recv(task_t *t, uint32_t id, uint64_t uaddr, uint64_t size, int flags)
+int sys_ipc_recieve(task_t *t, int cap_id, bool is_blocking)
 {
-    
-//     debug("[IPC] Receive cap %d msg 0x%lX size %d\n", id, uaddr, size);
-//    debug("[IPC_RCV] message 1 0x%lX = 0x%lX\n", &msg, msg);;
+    task_t *sender;
 
-    if (!size || !uaddr) return -EINVAL;
-    
-    cap_entry_t *ce = cap_lookup(t, id);
-//    debug("[IPC_RCV] cap lookup %d ce 0x%lX ep 0x%lX msg 0x%lX\n", id, ce, ce->obj, msg);
-//    debug("[IPC_RCV] cap valid %d type 0x%lX rights %d\n", ce->valid, ce->type, ce->rights);
-    if (!ce) return -ECAPINVAL;
+    cap_entry_t *ce = cap_lookup(t, cap_id);
+
+    if (!ce) return -ERR_CAP_INVAL;
     if (ce->type != CAP_ENDPOINT || !(ce->rights & CRIGHT_RCV)){
         return -EPERM;
     }      
    
     endpoint_t *ep = (endpoint_t *)ce->obj;
-//    debug("Endpoint 0x%lX has %d messgs\n", ep, ep->count);
 
-    acquire(&ep->lock);
-    ipc_msg_t *msg = queue_pop(ep);
-    if (!msg) {
-        if (flags & IPC_NOWAIT) {
-            release(&ep->lock);
-            return -EAGAIN;
+    lock_ko(ep);
+//    debug("\x1b[31m[IPC]\x1b[0m receive task %d\n", t->pid);
+    switch (ep->state)
+    {
+    case EP_STATE_IDLE:
+    case EP_STATE_RECV:  
+
+        if (is_blocking) {
+            list_add_tail(&ep->queue, &t->eplist);
+            ep->state = EP_STATE_RECV;
+            sched_task_block(ep, KO_LOCK(ep), BLOCKED_RECV);
+//            sched_task_sleep(t, KO_LOCK(ep));
+        } else {
+            // set a0 = 0 (bange)
+            syscall_set_MR(t, 0, 0);
         }
-        sched_task_sleep(t, &ep->lock);
-        msg = queue_pop(ep);
-    }    
-    release(&ep->lock);
-    if (mmu_user_copyout(t->pagetable, uaddr, (char *)msg->message, size) < 0) {
-        // ??? pushing msg back. maybe it needs to be free 
-        queue_push(ep, msg);
-        return -EINVAL;
-    }
-
-    // park message in caps for replay
-    int rpl = msg->reply;
-    mfree(msg);
-    return rpl;
-}
-
-
-
-uint64_t sys_ipc_call(task_t *t, uint32_t cap_id, uint64_t umsg, uint64_t urep, uint64_t size)
-{
-    if (!size || !umsg || !urep) return -EINVAL;
+        break;
     
-    cap_entry_t *ce = cap_lookup(t, cap_id);
+    case EP_STATE_SEND:
+        
+#ifdef __DEBUG__
+        if (list_is_empty(&ep->queue)) panic("endpoint queue empty");
+#endif
+        // dequeue task
+        sender = list_first_entry(&ep->queue, struct task, eplist);
+        list_del(&sender->eplist);
+//debug("\x1b[31m[IPC]\x1b[0m receive task %d\n", t->pid);
+        if (list_is_empty(&ep->queue)) ep->state = EP_STATE_IDLE;
+        do_ipc_transfer(sender, t);
 
-    if (!ce) return -ECAPINVAL;
-    if (ce->type != CAP_ENDPOINT || !(ce->rights & CRIGHT_SND)) return -EPERM;
+        if (sender->do_call) {
+            int rpl_cap = cap_replay_install(t, sender);
+            if (rpl_cap < 0) return rpl_cap;
+
+            t->reply_cap = rpl_cap;
+            
+            sched_task_update_block(sender, sender, BLOCKED_REPLY);
+
+        } else {
+            // check do i need to wake it up
+            sched_task_unblock(ep);
+        //    sched_task_wakeup(sender);            
+        }
+
+
+
+        break;
+    }
     
-    endpoint_t *ep = (endpoint_t *)ce->obj;
-    ipc_msg_t *msg = malloc(sizeof(ipc_msg_t) + size);
-//    debug("[IPC] task %dsend cap %d msg 0x%lX size %d\n", t->pid, id, umsg, size);
-    if (!msg) return -ENOMEM;
-//    debug("[IPC] alloc meessage 0x%lX\n", msg);
-    msg->type = IPC_CALL;
-    msg->sender = t;
+    unlock_ko(ep);
 
-    if (mmu_user_copyin(t->pagetable, (char *)&msg->message, umsg, size) < 0){
-        mfree(msg);
-        return -EINVAL;
-    }
-
-
-    task_t *server = ep->owner;
-    int rpl_cap = cap_replay_install(server, t);
-    if (rpl_cap < 0) { mfree(msg); return rpl_cap; }
-    msg->reply = rpl_cap;   
-
-    queue_push(ep, msg);
-    sched_task_wakeup(ep->owner);
-
-    acquire(&t->rep_lock);
-//    debug("Task %d wait for 0x%lX\n", t->pid, t);
-    t->replay_msg = NULL;
-    sched_task_sleep(t, &t->rep_lock);     
-    release(&t->rep_lock);
-//    debug("Waked up for 0x%lX\n", t);
-    // take response
-    msg = t->replay_msg;
-    if (msg->type != IPC_REPL) {
-        mfree(msg);
-        return -ENOENT;
-    }
-    if (mmu_user_copyout(t->pagetable, urep, (char *)&msg->message, size) < 0){
-        mfree(msg);
-        return -EINVAL;
-    }
-
-    t->replay_msg = NULL;
-    mfree(msg);
- 
     return SUCCESS;
 }
-    
 
-/*
- *  Syscall IPC replay
- *  t - task sender
- *  id - capability id of sender task
- *  uadd - message address in userland
- *  size - size of message
- */
-uint64_t sys_ipc_replay(task_t *t, uint64_t id, uint64_t uaddr, uint64_t size)
+
+int sys_ipc_reply(task_t *t)
 {
-    if (!size || !uaddr) return -EINVAL;
-//   debug("[IPC_RPL] replay cap %d msg 0x%lX size %d\n", id, uaddr, size);   
+    cap_entry_t *ce = cap_lookup(t, t->reply_cap);
+    if (!ce) return -ERR_CAP_INVAL;
 
-    cap_entry_t *ce = cap_lookup(t, id);
-    if (!ce || ce->type != CAP_REPLAY || !(ce->rights & CRIGHT_SND)){
+    if (ce->type != CAP_REPLAY || !(ce->rights & CRIGHT_SND)){
         return -EPERM;
     }        
 
     replay_t *r = (replay_t *)ce->obj;
-    if (r->ko.type != KO_REPLAY) return -EINVAL; 
+    if (KO_TYPE(r) != KO_REPLAY) return -EINVAL; 
 
     task_t *client = r->sender;
     if (!client) return -EINVAL;
+//    debug("\x1b[31m[IPC]\x1b[0m reply task %d to task %d\n", t->pid, client->pid);
+    do_ipc_transfer(t, client);
 
-    ipc_msg_t *msg = malloc(sizeof(ipc_msg_t) + size);   
+//    debug("\x1b[31m[IPC]\x1b[0m client 0x%lX status task %d chan 0x%lX\n",client, client->pid, client->chan);
+    // should be endpoit ???
+    sched_task_unblock(client);
 
- 
-
-    if (!msg) return -ENOMEM;
-
-
-    if (mmu_user_copyin(t->pagetable, (char *)&msg->message, uaddr, size) < 0){
-        mfree(msg);
-        return -EINVAL;
-    }
-
-    msg->type = IPC_REPL;
-
-    client->replay_msg = msg;
-//    debug("[IPC_RPL] reply message at 0x%lX\n", msg);
-//    debug("[IPC_RPL] wake up for 0x%lX\n", client);
-    acquire(&client->cap_lock);
-    sched_task_wakeup(client);
-    release(&client->cap_lock);
-
-    // free cap
-    cap_free(t, id);
+    // free reply cap
+    cap_free(t, t->reply_cap);
+    t->reply_cap = 0;
 
     return SUCCESS;
 }

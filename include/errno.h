@@ -5,7 +5,7 @@ typedef enum {
     SUCCESS = 0,
     ENOPERM,
     EPERM,      /* Operation not permitted */
-    ECAPINVAL,  /* Invalid cap*/
+    ERR_CAP_INVAL,  /* Invalid cap*/
     EINVAL,
     EAGAIN,     /* Try again */
     ENOMEM,

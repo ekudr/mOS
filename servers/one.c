@@ -1,6 +1,6 @@
 #include <common.h>
-//#include <libsys/ipc.h>
-//#include <memory.h>
+#include <libsys/ipc.h>
+#include <ipc.h>
 #include <string.h>
 #include <riscv.h>
 
@@ -9,7 +9,7 @@
 #include <sys/types.h>
 #include <mosstd.h>
 #include <cap.h>
-#include <ipc.h>
+
 #include <nameserver.h>
 #include <vfs.h>
 
@@ -17,6 +17,7 @@
 #include <tty.h>
 
 #include <mmc_ipc.h>
+
 
 void panic(const char *str)
 {
@@ -51,27 +52,43 @@ int disk_open(const char* name, struct disk_decriptor *disk)
 
     disk->disk_cap = sd_cap;
 
-    disk->buf_cap = cap_shmem_create(disk->buf_size, CRIGHT_GRANT | CRIGHT_MAP);
+    disk->buf_cap = cap_shmem_create(disk->buf_size,  CRIGHT_GRANT | CRIGHT_MAP);
     if (disk->buf_cap < 0)
         panic("[ONE] Cannot create shared mem cap");
 
     disk->buf = ipc_shm_attach(disk->buf_cap, NULL, 0);
     if (!disk->buf) panic("[ONE] Cannot attach shared mem cap");
 
-    int tr_cap = cap_transfer(disk->buf_cap, disk->disk_cap, CRIGHT_MAP);
-    if (tr_cap < 0) panic("[ONE] Cannot transfer buf cap");
+    // int tr_cap = cap_transfer(disk->buf_cap, disk->disk_cap, CRIGHT_MAP);
+    // if (tr_cap < 0) panic("[ONE] Cannot transfer buf cap");
 
-    struct sdmmc_msg sd_msg, sd_rpl;
-    memset(&sd_msg, 0, sizeof(sd_msg));
+    struct sdmmc_msg *sd_msg = (struct sdmmc_msg *)get_ipc_buffer()->msg;
+    memset(sd_msg, 0, sizeof(*sd_msg));
 
-    sd_msg.type = MMC_OP_OPEN;
-    sd_msg.msg.open.buf_cap = tr_cap;
-    sd_msg.msg.open.buf_size = disk->buf_size;
-    ipc_call(disk->disk_cap, &sd_msg, &sd_rpl, sizeof(struct sdmmc_msg));
-    if (sd_rpl.type != MMC_OP_REPLY)
-        panic("[ONE wrong reply]");
+    const char *n = strrchr(name, '/');
 
-    disk->disk_desc = sd_rpl.msg.open.desc;
+    n = n ? n+1 : name;
+
+    strncpy(sd_msg->msg.open.name, n, sizeof(sd_msg->msg.open.name)-1);
+
+    sd_msg->type = MMC_OP_OPEN;
+//    sd_msg->msg.open.buf_cap = tr_cap;
+    sd_msg->msg.open.buf_size = disk->buf_size;
+    ipc_set_cap(0, disk->buf_cap);
+
+    uint64_t info = msginfo_word_new(0, sizeof(*sd_msg)/8, 1, 0);
+    info = ipc_call(disk->disk_cap, info);    
+
+    int ret = (int)label_from_msginfo_word(info);
+    if (ret < 0 || !length_from_msginfo_word(info)) {
+        debug("[ONE] Error open drive %d info 0x%lX\n", ret, info);
+    }
+
+    if (sd_msg->type != MMC_OP_REPLY)
+        panic("[ONE] wrong reply");
+
+    disk->disk_desc = sd_msg->msg.open.desc;
+    if (disk->disk_desc < 0) panic("[ONE] open disk error");
     debug("[ONE] SD device descriptor 0x%lX\n", disk->disk_desc);
 
     return SUCCESS;
@@ -79,18 +96,24 @@ int disk_open(const char* name, struct disk_decriptor *disk)
 
 int disk_read(struct disk_decriptor *disk, uint64_t start, uint64_t blocks)
 {
-    struct sdmmc_msg sd_msg, sd_rpl;
+    struct sdmmc_msg *sd_msg = (struct sdmmc_msg *)get_ipc_buffer()->msg;
 
     if (blocks * 512 > disk->buf_size) return -EINVAL;
 
-    memset(&sd_msg, 0, sizeof(sd_msg));
+    memset(sd_msg, 0, sizeof(*sd_msg));
 
-    sd_msg.type = MMC_OP_READ_BLOCK;
-    sd_msg.msg.read.desc = disk->disk_desc;
-    sd_msg.msg.read.start = start;
-    sd_msg.msg.read.blocks = blocks;
-    ipc_call(disk->disk_cap, &sd_msg, &sd_rpl, sizeof(struct sdmmc_msg));
-    if (sd_rpl.type != MMC_OP_REPLY)
+    sd_msg->type = MMC_OP_READ_BLOCK;
+    sd_msg->msg.read.desc = disk->disk_desc;
+    sd_msg->msg.read.start = start;
+    sd_msg->msg.read.blocks = blocks;
+
+    uint64_t info = msginfo_word_new(0, sizeof(*sd_msg)/8, 0, 0);
+    info = ipc_call(disk->disk_cap, info); 
+    int ret = (int)label_from_msginfo_word(info);
+    if (ret < 0 || !length_from_msginfo_word(info)) {
+        debug("[ONE] Error read drive %d info 0x%lX\n", ret, info);
+    }    
+    if (sd_msg->type != MMC_OP_REPLY)
         panic("[ONE wrong reply]");
 
     return SUCCESS;
@@ -115,6 +138,8 @@ int main()
 
     cons_out("One App test\n");
 
+    cons_out("[ONE] IPC buffer at 0x%lX\n",get_ipc_buffer());
+
     // set buffer size for disk operations
     memset(&disk, 0, sizeof(disk));
     disk.buf_size = 0x4000;
@@ -136,13 +161,9 @@ int main()
         cons_out("%X ", gpt->disk_guid.b[i]);
     }
     cons_out("\n");
-    cons_out("[ONE] GPT: partition entry lba 0x%lX\n", gpt->partition_entry_lba);
-    cons_out("[ONE] GPT: num partition entries %d\n", gpt->num_partition_entries);
-    cons_out("[ONE] GPT: size of partition entry %d\n", gpt->sizeof_partition_entry);
 
     next_lba = gpt->partition_entry_lba;
 
-    cons_out("[ONE] Reading %d bytes for gpt entries\n",gpt->sizeof_partition_entry*gpt->num_partition_entries);
     err = disk_read(&disk, next_lba, gpt->sizeof_partition_entry*gpt->num_partition_entries/0x200);
     if (err < 0) panic("[ONE] read err");
     gpt_en = (gpt_entry *)disk.buf;
@@ -151,23 +172,23 @@ int main()
 
     for (int i=0; i< 7/*gpt->num_partition_entries*/; i++) {
  //       if(gpt_en[i].partition_type_guid.b[0]) { 
-            cons_out("[ONE] partition %d type GUID ", i);
-            for (int j = 0; j < 16; j++) {
-                cons_out("%X ", gpt_en[i].partition_type_guid.b[j]);
-            }
-            cons_out("\n");
-            cons_out("[ONE] unique GUID ");
-            for (int i = 0; i < 16; i++) {
-                cons_out("%X ", gpt_en[i].unique_partition_guid.b[i]);
-            }
-            cons_out("\n");            
-            cons_out("[ONE] GPT: partition %i lbas 0x%lX -> 0x%lX\n", i, gpt_en[i].starting_lba, gpt_en[i].ending_lba);
-            cons_out("[ONE] Name ");
-            for (int j = 0; j < 36; j++) {
-                if (gpt_en[i].partition_name[j])
-                    cons_out("%s", gpt_en[i].partition_name + j);
-            }
-            cons_out("\n");  
+            // cons_out("[ONE] partition %d type GUID ", i);
+            // for (int j = 0; j < 16; j++) {
+            //     cons_out("%X ", gpt_en[i].partition_type_guid.b[j]);
+            // }
+            // cons_out("\n");
+            // cons_out("[ONE] unique GUID ");
+            // for (int i = 0; i < 16; i++) {
+            //     cons_out("%X ", gpt_en[i].unique_partition_guid.b[i]);
+            // }
+            // cons_out("\n");            
+            // cons_out("[ONE] GPT: partition %i lbas 0x%lX -> 0x%lX\n", i, gpt_en[i].starting_lba, gpt_en[i].ending_lba);
+            // cons_out("[ONE] Name ");
+            // for (int j = 0; j < 36; j++) {
+            //     if (gpt_en[i].partition_name[j])
+            //         cons_out("%s", gpt_en[i].partition_name + j);
+            // }
+            // cons_out("\n");  
             if(!memcmp(gpt_en[i].partition_name, bootfs_name, 7)) {
                 // boot_disk.fat_lba = gpt_en[i].starting_lba;
                 // // First Sector of partition 
@@ -176,7 +197,7 @@ int main()
                 // ext_fs.total_sect = gpt_en[i].ending_lba - gpt_en[i].starting_lba;
                 // // Block size  of partition 
                 // ext_fs.blksz = 512;
-                cons_out("[ONE] partition start %d total sectors %d\n", gpt_en[i].starting_lba, gpt_en[i].ending_lba - gpt_en[i].starting_lba);
+                cons_out("[ONE] partition %d start 0x%lX total sectors 0x%lX\n", i, gpt_en[i].starting_lba, gpt_en[i].ending_lba - gpt_en[i].starting_lba);
             }
 //        }
     }

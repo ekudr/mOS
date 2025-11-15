@@ -34,6 +34,8 @@ void sched_init(void)
     task_table = khash_create(8);
     if (task_table == NULL)
         panic("[SCHED] can not create hash table");
+
+//    debug("[SCHED] size of task state 0x%lX\n", TASK_STATE_MASK);
 }
 
 /*
@@ -68,7 +70,7 @@ void sched_task_sleep(void *chan, struct spinlock *lk)
 
     // Go to sleep.
     t->chan = chan;
-    t->state = SLEEPING;
+    set_task_state(t, SLEEPING);
 //    debug("[SCHED] Task %d sleep\n", t->pid);
     sched_to_scheduler();
 
@@ -84,7 +86,29 @@ void sched_task_sleep(void *chan, struct spinlock *lk)
  * 
  * 
  */
-void sched_sleep()
+// void sched_sleep()
+// {
+//     task_t *t = mytask();
+
+//     // Must acquire t->lock in order to
+//     // change t->state and then call sched.
+//     // Once we hold t->lock, we can be
+//     // guaranteed that we won't miss any wakeup
+//     // (wakeup locks t->lock),
+//     // so it's okay to release lk.
+
+//     acquire(&t->lock); // DOC: sleeplock1
+// //    debug("task %d going SLEEP\n", t->pid);
+//     // Go to sleep.
+//     set_task_state(t, SLEEPING);
+ 
+// //    debug("[SCHED] Task %d sleep\n", t->pid);
+//     sched_to_scheduler();
+//     release(&t->lock);
+ 
+// }
+
+void sched_task_block(void *chan, struct spinlock *lk, enum task_state state)
 {
     task_t *t = mytask();
 
@@ -94,18 +118,54 @@ void sched_sleep()
     // guaranteed that we won't miss any wakeup
     // (wakeup locks t->lock),
     // so it's okay to release lk.
+//    debug("\x1b[31m[SHCED]\x1b[0m task block %d\n", t->pid);
+    acquire(&t->lock); 
+    release(lk);
 
-    acquire(&t->lock); // DOC: sleeplock1
-//    debug("task %d going SLEEP\n", t->pid);
-    // Go to sleep.
-    t->state = SLEEPING;
- 
-//    debug("[SCHED] Task %d sleep\n", t->pid);
+    t->chan = chan;
+    set_task_state(t, state);
+
     sched_to_scheduler();
+
+    t->chan = 0;
     release(&t->lock);
+    acquire(lk);
+}
 
+void sched_task_unblock(void *chan)
+{
+    task_t *t;
+    list_head_t *pos;
 
- 
+    list_for_each(pos, &gp_tm->tasklist)
+    {
+        t = list_entry(pos, task_t, tasklist);
+
+        if (t != mytask())
+        {
+            acquire(&t->lock);
+            uint32_t state = get_task_state(t);
+            if (((state == BLOCKED_RECV) || 
+                (state == BLOCKED_SEND) ||
+                (state == BLOCKED_REPLY)) && t->chan == chan)
+            {
+                set_task_state(t, RUNNABLE);
+//                debug("[SCHED] wake up task %d\n", t->pid);
+            }
+            release(&t->lock);
+        }
+    }
+}
+
+void sched_task_update_block(task_t *t, void *chan, enum task_state state)
+{
+    if (t != mytask())
+    {
+        acquire(&t->lock);
+        t->chan = chan;
+        set_task_state(t, state);
+        release(&t->lock);
+    }
 }
 
 /*
@@ -125,9 +185,9 @@ void sched_task_wakeup(void *chan)
         {
             acquire(&t->lock);
 
-            if (t->state == SLEEPING && t->chan == chan)
+            if (get_task_state(t) == SLEEPING && t->chan == chan)
             {
-                t->state = RUNNABLE;
+                set_task_state(t, RUNNABLE);
 //                debug("[SCHED] wake up task %d\n", t->pid);
             }
             release(&t->lock);
@@ -139,18 +199,18 @@ void sched_task_wakeup(void *chan)
  * Wake up task sleeping.
  * Must be called without any t->lock.
  */
-void sched_wakeup(task_t *t)
-{
-    if (t != mytask()) {
-        acquire(&t->lock);
+// void sched_wakeup(task_t *t)
+// {
+//     if (t != mytask()) {
+//         acquire(&t->lock);
 
-        if (t->state == SLEEPING) {
-            t->state = RUNNABLE;
-//            debug("[SCHED] wake up task %d\n", t->pid);
-        }
-        release(&t->lock);
-    }
-}
+//         if (get_task_state(t) == SLEEPING) {
+//             set_task_state(t, RUNNABLE);
+// //            debug("[SCHED] wake up task %d\n", t->pid);
+//         }
+//         release(&t->lock);
+//     }
+// }
 
 /*
  * Give up the CPU for one scheduling round.
@@ -159,7 +219,7 @@ void sched_task_yield(void)
 {
     task_t *t = mytask();
     acquire(&t->lock);
-    t->state = RUNNABLE;
+    set_task_state(t, RUNNABLE);
     sched_to_scheduler();
     release(&t->lock);
 }
@@ -180,9 +240,9 @@ int sched_task_kill(int pid)
         acquire(&t->lock);
         if(t->pid == pid){
             t->killed = 1;
-            if(t->state == SLEEPING){
+            if(get_task_state(t) == SLEEPING){
                 // Wake process from sleep().
-                t->state = RUNNABLE;
+                set_task_state(t, RUNNABLE);
             }
             release(&t->lock);
             return 0;
@@ -249,7 +309,7 @@ sched_task_exit(int status)
     acquire(&t->lock);
 
     t->xstate = status;
-    t->state = ZOMBIE;
+    set_task_state(t,ZOMBIE);
 
     release(&gp_tm->wait_lock);
 
@@ -276,7 +336,7 @@ void sched_to_scheduler(void)
         panic("[SCHED] sched t->lock");
     if (current_cpu->noff != 1)
         panic("[SCHED] tasks locks");
-    if (t->state == RUNNING)
+    if (get_task_state(t) == RUNNING)
         panic("[SCHED] task running");
     if (intr_get())
         panic("[SCHED] task interruptible");
@@ -311,12 +371,12 @@ void scheduler(void)
 //            debug("[SCHED] check task 0x%lX\n", t);
 //            debug("[SCHED] check task %d state %d\n", t->pid, t->state);
             acquire(&t->lock);
-            if (t->state == RUNNABLE)
+            if (get_task_state(t) == RUNNABLE)
             {
                 // Switch to chosen process.  It is the process's job
                 // to release its lock and then reacquire it
                 // before jumping back to us.
-                t->state = RUNNING;
+                set_task_state(t, RUNNING);
                 c->task = t;
                 swtch(&c->context, &t->context);
 
@@ -409,16 +469,20 @@ sched_taskalloc(void)
 {
     task_t       *t;
     mem_struct_t *mm;
+    uint64_t     ppn;
 
-    t = malloc(sizeof(task_t));
-    if (t == 0)
-        panic("[SHED] cannot alloc task mem");
+    ppn = pgalloc();
+    if (!ppn) return NULL;
+
+    t = (task_t *)PPN2DA(ppn);
+    // if (t == 0)
+    //     panic("[SHED] cannot alloc task mem");
 //    debug("[SCHED] Task allocated at 0x%lX\n", t);    
     memset(t, 0, sizeof(task_t));
 
     initlock(&t->lock, "task");
 
-//    debug("[SCHED] creating task 0x%lX\n", t);
+//    debug("[SCHED] creating task 0x%lX size %d\n", t, sizeof(task_t));
     mm = malloc(sizeof(mem_struct_t));
     if (mm == 0)
         panic("[SHED] cannot alloc mem struct for task");
@@ -434,7 +498,7 @@ sched_taskalloc(void)
     list_init(&mm->memlist);
 
     t->pid = sched_alloc_pid();
-    t->state = NEW;
+    set_task_state(t, NEW);
 
     // add to list
     list_add_tail(&gp_tm->tasklist, &t->tasklist);
@@ -446,20 +510,42 @@ sched_taskalloc(void)
         panic("Kstack allocating error due a task creating\n");
 
     // Allocate a trapframe page.
-    if ((t->trapframe = (trapframe_t *)PPN2DA(pgalloc())) == 0) {
+    ppn = pgalloc();
+    if (!ppn) {
         sched_taskfree(t);
-        return 0;
+        return NULL;
     }
+    t->trapframe = (trapframe_t *)PPN2DA(ppn);
+
+    // // Allocate CAPS node
+    // if ((t->caps = (cap_entry_t *)create_cnode()) == 0) {
+    //     sched_taskfree(t);
+    //     return 0;
+    // } 
+
+    // Allocate IPC buffer
+    ppn = pgalloc();
+    if (!ppn) {
+        sched_taskfree(t);
+        return NULL;
+    }
+    t->ipc_buf = (void *)PPN2DA(ppn);
+    memset(t->ipc_buf, 0, PAGE_SIZE);
 
     // Create task's own endpoint as cap 0
     endpoint_t *ep = malloc(sizeof(endpoint_t));
     if (ep == NULL)
         panic("cannot create endpoint");
     
-    initlock(&ep->lock, "endpoint");
+    ep = (endpoint_t *)ko_init((kobject_t *)ep, t, KO_ENDPOINT);
+//    initlock(&ep->lock, "endpoint");
     ep->count = 0;
-    list_init(&ep->msglist);
-    ep->owner = t;
+//    list_init(&ep->msglist);
+    list_init(&ep->queue);
+
+    ep->count = 0;
+    ep->state = EP_STATE_IDLE;
+
     cap_install(t, ep, CAP_ENDPOINT, CRIGHT_SND | CRIGHT_RCV);
 
     if (unlikely(t->pid == 1))

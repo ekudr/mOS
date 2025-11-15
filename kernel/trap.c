@@ -135,7 +135,7 @@ void kerneltrap()
 
     if ((which_dev = devintr()) == 0)
     {
-        printf("HART %d trap: scause %p sepc=%p stval=%p\n", current_cpu->hartid,
+        printf("HART %d task %d trap: scause %p sepc=%p stval=%p\n", current_cpu->hartid, mytask()->pid,
                 scause, r_sepc(), r_stval());
         panic("kerneltrap");
     }
