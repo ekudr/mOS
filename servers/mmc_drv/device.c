@@ -3,7 +3,7 @@
 #include <mosstd.h>
 #include <errno.h>
 #include <ipc.h>
-#include <libsys/part.h>
+#include <part.h>
 
 #include "mmc.h"
 
@@ -68,6 +68,18 @@ int open_dev(const char *name, int buf_cap, uint32_t buf_size)
     if (!e.buf) return -EINVAL;
 
     return desc_do_register(e);
+}
+
+int close_dev(int desc)
+{
+    if (!descs[desc].buf) return -ENOENT;
+    // unmap(descs[desc].buf);
+    // cap_free(descs[desc].buf_cap);
+    descs[desc].buf_cap  = 0;
+    descs[desc].buf      = 0;
+    descs[desc].buf_size = 0;
+    descs[desc].dev_id   = 0;    
+    return SUCCESS;
 }
 
 int read_dev(int desc, uint64_t start, uint64_t blocks)
@@ -147,6 +159,12 @@ uint64_t get_device_start(int n)
 uint64_t get_device_end(int n)
 {
     return devices[n].start;
+}
+
+uint64_t get_device_blocks_by_desc(int d)
+{
+    int i = descs[d].dev_id;
+    return devices[i].end - devices[i].start;
 }
 
 void set_device_name(int n, const char *name)

@@ -1,16 +1,17 @@
 #include <mosstd.h>
-#include <cap.h>
+#include <libsys/cap.h>
 #include <libsys/ipc.h>
-
+#include <block_dev.h>
 
 #include <string.h>
 #include <devman.h>
 #include <vfs.h>
 
 #include "mmc.h"
-#include "mmc_ipc.h"
+
 
 int open_dev(const char *name, int buf_cap, uint32_t buf_size);
+int close_dev(int desc);
 int read_dev(int desc, uint64_t start, uint64_t blocks);
 
 
@@ -106,6 +107,17 @@ void main()
                 memset(sd_msg, 0, sizeof(*sd_msg));
                 sd_msg->type = MMC_OP_REPLY;
                 sd_msg->msg.open.desc = desc;
+                sd_msg->msg.open.total_blocks = get_device_blocks_by_desc(desc);
+                info = msginfo_word_new(0,sizeof(*sd_msg)/8, 0, 0);
+                ipc_reply(info);
+                break;
+            }
+        case MMC_OP_CLOSE: {
+                int ret = close_dev(sd_msg->msg.ctrl.desc);
+
+                memset(sd_msg, 0, sizeof(*sd_msg));
+                sd_msg->type = MMC_OP_REPLY;
+                sd_msg->msg.ctrl.desc = ret;
 
                 info = msginfo_word_new(0,sizeof(*sd_msg)/8, 0, 0);
                 ipc_reply(info);

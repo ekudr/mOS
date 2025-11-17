@@ -47,12 +47,13 @@ libc_string = [
 
 libc_mosstd = [
     'mosstd/getpid.c',
-    'mosstd/cap.c',
     'mosstd/ipc.c',
     'mosstd/devman.c',
     'mosstd/nameserver.c',
     'mosstd/vfs.c',
     'mosstd/console.c',
+    'mosstd/block_dev.c',
+    'mosstd/ext4.c',
 ]
 
 libc_malloc = [

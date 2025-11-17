@@ -1,5 +1,7 @@
 {
     "files.associations": {
-        "mmio.h": "c"
+        "mmio.h": "c",
+        "block_dev.h": "c",
+        "ipc.h": "c"
     }
 }

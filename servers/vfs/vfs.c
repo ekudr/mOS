@@ -1,5 +1,5 @@
 #include <mosstd.h>
-#include <cap.h>
+#include <libsys/cap.h>
 #include <libsys/ipc.h>
 #include <libsys/list.h>
 #include <string.h>
@@ -151,9 +151,9 @@ int main()
         switch (msg->type)
         {
         case VFS_OPEN:
-//            debug("[VFS] open path %s\n", msg.path);
+//            debug("[VFS] open path %s\n", msg->path);
             node = vfs_lookup_path(root, msg->path);
-            
+
             if (!node) {
                 memset(msg, 0, sizeof(struct vfs_msg));
                 msg->ret = -ENOENT;

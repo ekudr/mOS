@@ -7,7 +7,7 @@
 //#include <memory.h>
 #include <string.h>
 #include <nameserver.h>
-#include <cap.h>
+#include <libsys/cap.h>
 #include <mosstd.h>
 
 #include <syscall.h>

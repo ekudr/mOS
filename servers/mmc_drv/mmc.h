@@ -526,5 +526,6 @@ int init_dev();
 
 uint64_t get_device_start(int n);
 uint64_t get_device_end(int n);
+uint64_t get_device_blocks_by_desc(int n);
 void set_device_name(int n, const char *name);
 #endif /* __MMC_H__ */

@@ -3,7 +3,7 @@
 #include <libsys/ipc.h>
 #include <nameserver.h>
 #include <errno.h>
-#include <cap.h>
+#include <libsys/cap.h>
 #include <ipc.h>
 #include <string.h>
 

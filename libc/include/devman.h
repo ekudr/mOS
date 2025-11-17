@@ -1,7 +1,7 @@
 #ifndef __DEVMAN_H__
 #define __DEVMAN_H__
 
-#include <cap.h>
+#include <libsys/cap.h>
 #include <libsys/list.h>
 
 #define DM_MAX_DEVS 32

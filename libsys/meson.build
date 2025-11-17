@@ -4,11 +4,13 @@ libsys_sources = [
     'ulib.c',
     'syscall.c',
 #    'syscalls.S',
+    'cap.c',
     'malloc.c',
     'printf.c',
 #    'string.c',
     'debug.c',
     'riscv_timer.c',
+
 ]
 
 

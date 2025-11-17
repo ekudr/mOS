@@ -1,5 +1,5 @@
 #include <stdint.h>
-#include <cap.h>
+#include <libsys/cap.h>
 #include <syscall.h>
 #include <libsys/syscall.h>
 

@@ -2,7 +2,7 @@
 #include <libsys/ipc.h>
 #include <nameserver.h>
 #include <string.h>
-#include <cap.h>
+#include <libsys/cap.h>
 //#include <memory.h>
 
 #define MAX_NAMES    64

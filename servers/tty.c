@@ -10,7 +10,7 @@
 #include <mosstd.h>
 #include <signals.h>
 #include <nameserver.h>
-#include <cap.h>
+#include <libsys/cap.h>
 #include <ipc.h>
 #include <vfs.h>
 #include <devman.h>

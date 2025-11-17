@@ -5,7 +5,7 @@
 
 #include <vfs.h>
 
-#include <cap.h>
+#include <libsys/cap.h>
 #include <libsys/ipc.h>
 #include <nameserver.h>
 
@@ -70,8 +70,7 @@ int vfs_open(const char *path)
     if (ret < 0 || !length_from_msginfo_word(info)) {
         debug("[VFS] Error open node %d \n", ret);
     }
-
-    if (msg->ret < 0) return -EINVAL;        
+     
     return msg->ret;
 }
 
