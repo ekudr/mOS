@@ -6,6 +6,10 @@
 #include <khash.h>
 #include <sysproc.h>
 
+const int msgRegisters[] = {
+    2, 3, 4, 5, 6
+};
+
 // ipc_manager_t *gp_ipcm;
 
 // static khash_table_t   *mid_table;
@@ -16,12 +20,6 @@
 //     return __atomic_fetch_add(&ipc_id, 1, __ATOMIC_ACQ_REL);;
 // }
 
-
-
-
-const int msgRegisters[] = {
-    2, 3, 4, 5, 6
-};
 
 int copy_MRs(task_t *sender, uint64_t *sendBuf, task_t *receiver,
                uint64_t *recvBuf, uint64_t n)
@@ -139,7 +137,7 @@ int sys_ipc_send(task_t *t, int cap_id, bool is_blocking, bool is_call)
     case EP_STATE_SEND:
         if (is_blocking) {
         //    enqueue(t);
-            t->do_call = is_call;
+            set_task_state_docall(t, is_call);
             list_add_tail(&ep->queue, &t->eplist);
             ep->state = EP_STATE_SEND;
             sched_task_block(ep, KO_LOCK(ep), BLOCKED_SEND);
@@ -232,7 +230,7 @@ int sys_ipc_recieve(task_t *t, int cap_id, bool is_blocking)
         if (list_is_empty(&ep->queue)) ep->state = EP_STATE_IDLE;
         do_ipc_transfer(sender, t);
 
-        if (sender->do_call) {
+        if (get_task_state_docall(sender)) {
             int rpl_cap = cap_replay_install(t, sender);
             if (rpl_cap < 0) return rpl_cap;
 

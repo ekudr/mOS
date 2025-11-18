@@ -78,9 +78,10 @@ int disk_close(block_dev_t *disk)
         return -EINVAL;
 
     if (sd_msg->msg.ctrl.desc < 0) return sd_msg->msg.ctrl.desc;
+
     // unmap_shmem()
-    // cap_free(disk->buf_cap)
-    // cap_free(disk->disk_cap)
+ //   cap_free(disk->buf_cap);
+    cap_free(disk->disk_cap);
 
     disk->buf=0;
     disk->buf_cap=0;

@@ -43,7 +43,7 @@
 #define SYS_irq_set 50
 #define SYS_irq_act 51
 
-#define SYS_endpt_crt 60
+// #define SYS_endpt_crt 60
 
 // #define SYS_ipc_snd 62
 // #define SYS_ipc_rcv 63
@@ -53,7 +53,7 @@
 #define SYS_cap_crt 100
 #define SYS_cap_grant 101
 #define SYS_cap_transfer 102
-#define SYS_fast_call 103
+//#define SYS_fast_call 103
 #define SYS_shmem_crt 104
 #define SYS_shmem_att 105
 

@@ -144,13 +144,13 @@ uint64_t sys_snd_sig(void)
 }
 
 
-uint64_t sys_endpt_creat(void)
-{
-    uint64_t right;
-    right = syscall_argraw(0);
-    task_t *t = mytask();
-    return sys_endpoint_create(t, right);
-}
+// uint64_t sys_endpt_creat(void)
+// {
+//     uint64_t right;
+//     right = syscall_argraw(0);
+//     task_t *t = mytask();
+//     return sys_endpoint_create(t, right);
+// }
 
 uint64_t sys_cap_grnt(void)
 {
@@ -173,11 +173,13 @@ uint64_t __sys_cap_transfer(void)
 
 uint64_t sys_cap_create(void)
 {
-    uint64_t type, rights;
-    type = syscall_argraw(0);
-    rights = syscall_argraw(1);
+    // uint64_t type, rights;
+    // type = syscall_argraw(2);
+    // rights = syscall_argraw(3);
     task_t *t = mytask();
-    return sys_capability_create(t, type, rights);
+    int cap_id = sys_capability_create(t);
+    t->trapframe->a2 = cap_id;
+    return t->trapframe->a1;
 }
 
 uint64_t __sys_cap_free(void)
@@ -192,11 +194,11 @@ uint64_t __sys_cap_free(void)
 
 uint64_t __sys_shmem_create(void)
 {
-    uint64_t size, rights;
-    size = syscall_argraw(0);
-    rights = syscall_argraw(1);
+    // uint64_t size, rights;
+    // size = syscall_argraw(0);
+    // rights = syscall_argraw(1);
     task_t *t = mytask();
-    return sys_cap_shmem_create(t, size, rights);
+    return sys_cap_shmem_create(t);
 }
 
 uint64_t __sys_shmem_attach(void)
@@ -209,30 +211,30 @@ uint64_t __sys_shmem_attach(void)
     return (uint64_t)sys_ipc_shm_attach(t, (int)cap_id, (const void *)addr, (int)flags);
 }
 
-uint64_t sys_fast_call(void)
-{
-    uint64_t arg1, arg2, arg3, arg4, arg5, arg6, arg7;
-    arg1 = syscall_argraw(0);
-    arg2 = syscall_argraw(1);
-    arg3 = syscall_argraw(2);
-    arg4 = syscall_argraw(3);
-    arg5 = syscall_argraw(4);
-    arg6 = syscall_argraw(5);
-    arg7 = syscall_argraw(6);
-    debug("[IPC_CALL] arg1 0x%lX arg2 0x%lX arg3 0x%lX arg4 0x%lX arg5 0x%lX arg6 0x%lX arg7 0x%lX\n",
-                arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+// uint64_t sys_fast_call(void)
+// {
+//     uint64_t arg1, arg2, arg3, arg4, arg5, arg6, arg7;
+//     arg1 = syscall_argraw(0);
+//     arg2 = syscall_argraw(1);
+//     arg3 = syscall_argraw(2);
+//     arg4 = syscall_argraw(3);
+//     arg5 = syscall_argraw(4);
+//     arg6 = syscall_argraw(5);
+//     arg7 = syscall_argraw(6);
+//     debug("[IPC_CALL] arg1 0x%lX arg2 0x%lX arg3 0x%lX arg4 0x%lX arg5 0x%lX arg6 0x%lX arg7 0x%lX\n",
+//                 arg1, arg2, arg3, arg4, arg5, arg6, arg7);
         
-    task_t *t = mytask();
+//     task_t *t = mytask();
 
-    t->trapframe->a1 = 0x101;
-    t->trapframe->a2 = 0x103;
-    t->trapframe->a3 = 0x104;
-    t->trapframe->a4 = 0x105;
-    t->trapframe->a5 = 0x106;
-    t->trapframe->a6 = 0x107;
+//     t->trapframe->a1 = 0x101;
+//     t->trapframe->a2 = 0x103;
+//     t->trapframe->a3 = 0x104;
+//     t->trapframe->a4 = 0x105;
+//     t->trapframe->a5 = 0x106;
+//     t->trapframe->a6 = 0x107;
 
-    return 0x100;
-}
+//     return 0x100;
+// }
 
 uint64_t __sys_recv(void)
 {

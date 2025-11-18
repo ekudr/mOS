@@ -10,6 +10,8 @@
 #include <cap.h>
 #include <ipc.h>
 
+#include <object.h>
+
 register struct cpu *current_cpu __asm__("tp");
 
 // Saved registers for kernel context switches.
@@ -110,6 +112,7 @@ struct ipc_msg;
  */
 typedef struct task
 {
+    struct kobject   hdr;
     struct spinlock     lock;
 
     // t->lock must be held when using these:
@@ -140,25 +143,32 @@ typedef struct task
 //    void                *irq_handler;
     list_head_t         eplist;             // link to endpoint list
     void                *ipc_buf;
-//    uint64_t            ipc_regs[IPC_MAX_REGS];
     struct spinlock     cap_lock;
     cap_entry_t         caps[MAX_CAPS];
 
-    bool                do_call;
-    struct spinlock     rep_lock;
+//    struct spinlock     rep_lock;
     int                 reply_cap;
-    struct ipc_msg      *replay_msg;
+//    struct ipc_msg      *replay_msg;
 
 //    struct task         *reply_to;  // make it as cap
     struct signal_hand   *sighand;
 
 } task, task_t;
 
+_Static_assert((sizeof(struct task) < 0x1000), "task_t structure size");
+
 #define TASK_STATE_MASK (BIT(16)-1U)
 
-#define get_task_state(task)     ((task->state)&TASK_STATE_MASK)
-#define set_task_state(task, st) (task->state = (task->state  & ~TASK_STATE_MASK)|(st & TASK_STATE_MASK))
+#define TASK_STATE_DOCALL 16    // bit of state
+#define TASK_STATE_DOCALL_MASK BIT(TASK_STATE_DOCALL)
 
+#define get_task_state(task)     ((task->state)&TASK_STATE_MASK)
+#define set_task_state(task, st) \
+        (task->state = (task->state  & ~TASK_STATE_MASK)|(st & TASK_STATE_MASK))
+
+#define get_task_state_docall(task) (((task->state) & TASK_STATE_DOCALL_MASK) >> TASK_STATE_DOCALL)
+#define set_task_state_docall(task, v) \
+        (task->state = (task->state  & ~TASK_STATE_DOCALL_MASK)|((v << TASK_STATE_DOCALL) & TASK_STATE_DOCALL_MASK))
 
 // Per-CPU state.
 struct cpu

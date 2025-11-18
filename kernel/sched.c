@@ -35,7 +35,7 @@ void sched_init(void)
     if (task_table == NULL)
         panic("[SCHED] can not create hash table");
 
-//    debug("[SCHED] size of task state 0x%lX\n", TASK_STATE_MASK);
+//    debug("[SCHED] task state mask 0x%lX do call bit 0x%lX\n", TASK_STATE_MASK, TASK_STATE_DOCALL);
 }
 
 /*
@@ -475,10 +475,9 @@ sched_taskalloc(void)
     if (!ppn) return NULL;
 
     t = (task_t *)PPN2DA(ppn);
-    // if (t == 0)
-    //     panic("[SHED] cannot alloc task mem");
-//    debug("[SCHED] Task allocated at 0x%lX\n", t);    
     memset(t, 0, sizeof(task_t));
+
+    t = (task_t *)ko_init((kobject_t *)t, t, KO_TASK);
 
     initlock(&t->lock, "task");
 
@@ -517,11 +516,6 @@ sched_taskalloc(void)
     }
     t->trapframe = (trapframe_t *)PPN2DA(ppn);
 
-    // // Allocate CAPS node
-    // if ((t->caps = (cap_entry_t *)create_cnode()) == 0) {
-    //     sched_taskfree(t);
-    //     return 0;
-    // } 
 
     // Allocate IPC buffer
     ppn = pgalloc();
@@ -551,8 +545,8 @@ sched_taskalloc(void)
     if (unlikely(t->pid == 1))
         ns_ep = ep;
 
-    initlock(&t->rep_lock, "ipc replay");
-    t->replay_msg = NULL;
+    // initlock(&t->rep_lock, "ipc replay");
+    // t->replay_msg = NULL;
 
     // Add name server endpoint as cap 1
     cap_install(t, ns_ep, CAP_ENDPOINT, CRIGHT_SND);
@@ -588,8 +582,7 @@ sched_task_pagetable(task_t *t)
 
     // An empty page table.
     pgtable = mmu_user_pt_create();
-    if (pgtable == 0)
-        return 0;
+    if (!pgtable) return NULL;
 
     t->asid = sched_alloc_asid(t->pid);
 

@@ -23,15 +23,15 @@ typedef struct endpoint
     uint64_t    count;
 } endpoint_t;
 
-typedef struct fastcall
-{
-    struct kobject   hdr;
-    spinlock_t  lock;
-    int         state;
-    list_head_t tlist;  // list of senders
-    struct task *owner; // request handler/owner
-    uint64_t    count;
-} fastcall_t;
+// typedef struct fastcall
+// {
+//     struct kobject   hdr;
+//     spinlock_t  lock;
+//     int         state;
+//     list_head_t tlist;  // list of senders
+//     struct task *owner; // request handler/owner
+//     uint64_t    count;
+// } fastcall_t;
 
 typedef struct replay
 {

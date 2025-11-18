@@ -2,6 +2,7 @@
 #ifndef __SYSPROC_H__
 #define __SYSPROC_H__
 
+extern const int msgRegisters[];
 
 uint64_t syscall_argraw(int n);
 void syscall_argint(int n, int *ip);

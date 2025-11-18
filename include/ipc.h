@@ -11,7 +11,7 @@ struct task;
 
 #define IPC_MAX_REGS  5
 #define IPC_MAX_CAPS 4
-#define IPC_MAX_MSG_LEN 508 
+#define IPC_MAX_MSG_LEN 500 
 
 typedef struct {
     uint32_t    label;

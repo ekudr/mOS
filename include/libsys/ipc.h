@@ -5,7 +5,7 @@
 #include <syscall.h>
 
 #ifndef IPC_MAX_MSG_LEN
-#define IPC_MAX_MSG_LEN 508
+#define IPC_MAX_MSG_LEN 500
 #endif /* IPC_MAX_MSG_LEN */
 
 #ifndef IPC_MAX_CAPS
@@ -53,7 +53,7 @@ typedef struct ipc_buffer
     uint64_t    caps[IPC_MAX_CAPS];
 } ipc_buffer_t;
 
-_Static_assert((sizeof(struct ipc_buffer) > 0x1000), "ipc_buffers structure size");
+_Static_assert((sizeof(struct ipc_buffer) < 0x1000), "ipc_buffers structure size");
 
 extern ipc_buffer_t *__ipc_buffer;  
 

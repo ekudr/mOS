@@ -149,13 +149,13 @@ static uint64_t (*syscalls[])(void) = {
     // [SYS_ipc_rcv]   = sys_ipc_rcv,
     // [SYS_ipc_rpl]   = sys_ipc_rpl,
     // [SYS_ipc_call]   = sys_ipc_cll,
-    [SYS_endpt_crt] = sys_endpt_creat,
+    // [SYS_endpt_crt] = sys_endpt_creat,
     [SYS_cap_grant] = sys_cap_grnt,
     [SYS_cap_transfer] = __sys_cap_transfer,
     [SYS_cap_crt]   = sys_cap_create,
     [SYS_shmem_crt] = __sys_shmem_create,
     [SYS_shmem_att] = __sys_shmem_attach,
-    [SYS_fast_call] = sys_fast_call,
+//    [SYS_fast_call] = sys_fast_call,
     [SYS_cap_free]  = __sys_cap_free,
 
 };

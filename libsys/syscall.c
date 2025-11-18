@@ -149,3 +149,25 @@ void ipc_reply(msg_info_t info)
     syscall_reply(SYS_reply, info, ipc_getMR(0), ipc_getMR(1), ipc_getMR(2),
                     ipc_getMR(3), ipc_getMR(4));
 }
+
+int cap_create(uint64_t dest, msg_info_t info)
+{
+    msg_info_t o_info;
+    uint64_t msg0 = ipc_getMR(0);
+    uint64_t msg1 = ipc_getMR(1);
+    uint64_t msg2 = ipc_getMR(2);
+    uint64_t msg3 = ipc_getMR(3);
+    uint64_t msg4 = ipc_getMR(4);
+
+    syscall_send_recv(SYS_cap_crt, dest, &dest, info, &o_info, &msg0, &msg1,
+                        &msg2, &msg3, &msg4);
+
+    /* Write out the data back to memory. */
+    ipc_setMR(0, msg0);
+    ipc_setMR(1, msg1);
+    ipc_setMR(2, msg2);
+    ipc_setMR(3, msg3);
+    ipc_setMR(4, msg4);
+
+    return o_info;
+}

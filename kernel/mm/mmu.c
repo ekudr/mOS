@@ -151,13 +151,15 @@ mmu_memmap(pagetable_t pgtable, uint64_t vaddr, uint64_t size, int perm)
  *   Create an empty user page table.
  *   returns 0 if out of memory.
  */
-pagetable_t
-mmu_user_pt_create()
+pagetable_t mmu_user_pt_create()
 {
+    uint64_t ppn;
     pagetable_t pgtable;
-    pgtable = (pagetable_t)PPN2DA(pgalloc());
-    if (pgtable == 0)
-        return 0;
+
+    ppn = pgalloc();
+    if (!ppn) return NULL;
+
+    pgtable = (pagetable_t)PPN2DA(ppn);
     memset(pgtable, 0, PAGE_SIZE);
     return pgtable;
 }

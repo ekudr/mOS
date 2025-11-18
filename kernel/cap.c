@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <object.h>
 #include <shmem.h>
+#include <sysproc.h>
 
 
 // void *create_cnode(void)
@@ -118,8 +119,12 @@ int cap_replay_install(task_t *server, task_t *client)
     return cap_id;
 }
 
-int sys_endpoint_create(task_t *t, uint32_t rights)
+int sys_endpoint_create(task_t *t)
 {    
+    uint32_t rights = syscall_get_MR(t, msgRegisters[1]);
+
+    if (!rights) return -EINVAL;
+
     endpoint_t *ep = malloc(sizeof(endpoint_t));
     if (ep == NULL) return -ENOMEM;    
 
@@ -141,31 +146,33 @@ int sys_endpoint_create(task_t *t, uint32_t rights)
  * Syscall create fastcall capability
  */
 
-int fastcall_create(task_t *t, uint32_t rights)
-{
-    fastcall_t *fc = malloc(sizeof(fastcall_t));
-    if (fc == NULL) return -ENOMEM;
+// int fastcall_create(task_t *t, uint32_t rights)
+// {
+//     fastcall_t *fc = malloc(sizeof(fastcall_t));
+//     if (fc == NULL) return -ENOMEM;
 
-    fc = (fastcall_t *)ko_init((kobject_t *)fc, t, KO_FASTCALL);
-    initlock(&fc->lock, "fastcall");
-    list_init(&fc->tlist);
-    fc->owner = t;
+//     fc = (fastcall_t *)ko_init((kobject_t *)fc, t, KO_FASTCALL);
+//     initlock(&fc->lock, "fastcall");
+//     list_init(&fc->tlist);
+//     fc->owner = t;
 
-    fc->count = 0;
-    int ret = cap_install(t, fc, CAP_FASTCALL, rights);
-    if (ret < 0)
-        mfree(fc);
+//     fc->count = 0;
+//     int ret = cap_install(t, fc, CAP_FASTCALL, rights);
+//     if (ret < 0)
+//         mfree(fc);
 
-    return ret;
-} 
+//     return ret;
+// } 
 
 /*
  * Create shared memory capability
  * Return cap_id
  */
-int sys_cap_shmem_create(task_t *t, size_t size, uint32_t rights)
+int sys_cap_shmem_create(task_t *t)
 {
     int ret;
+    uint32_t rights = syscall_get_MR(t, msgRegisters[1]);
+    size_t size     = syscall_get_MR(t, msgRegisters[2]);
 
     if (!size || !rights) return -EINVAL;
 //    debug("[CAP] Create shmem cap size 0x%lX\n", size);
@@ -194,18 +201,21 @@ int sys_cap_shmem_create(task_t *t, size_t size, uint32_t rights)
     return ret;
 }
 
-int sys_capability_create(task_t *t, cap_type_t type, uint32_t rights)
+int sys_capability_create(task_t *t)
 {
     int ret;
+    cap_type_t type = (cap_type_t)syscall_get_MR(t, msgRegisters[0]);
+
 //    debug("[CAP] task %d create cap type %d\n", t->pid, type);
+
     switch (type)
         {
         case CAP_ENDPOINT:
-            ret = sys_endpoint_create(t, rights);
+            ret = sys_endpoint_create(t);
             break;
 
-        case CAP_FASTCALL:
-            ret = fastcall_create(t, rights);
+        case CAP_SHMEMORY:           
+            ret = sys_cap_shmem_create(t);
             break;
 /*        
         case CAP_REPLAY:

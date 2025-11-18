@@ -9,6 +9,7 @@ typedef enum {
     KO_IRQ,
     KO_FRAME,
     KO_SHMEM,
+    KO_TASK,
 } ko_type_t;
 
 #define KO_OWNER(ko)    (((kobject_t *)ko)->owner)
