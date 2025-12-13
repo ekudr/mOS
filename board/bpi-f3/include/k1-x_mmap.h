@@ -38,6 +38,8 @@
 
 #define PLIC_SCLAIM(hart) (PLIC_CLAIM + (hart)*0x2000)
 
+#define GPIO_BASE   0xD4019000UL
 
+#define PINCTRL_BASE 0xD401E000UL
 
 #endif /* __JH7110_MMAP_H__ */

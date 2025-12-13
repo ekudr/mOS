@@ -18,6 +18,8 @@ void sbi_init (void);
 int sbi_hsm_hart_start(unsigned long hartid, unsigned long saddr, unsigned long priv);
 void _hart_start(void);
 
+void heartbeat_init(void);
+
 void
 board_start_harts(void) {
     for (int i = 0; i < NCPUS; i++) {
@@ -71,7 +73,9 @@ kernel_init(void)
 
     //Set TIMER
     sbi_set_timer(r_time() + usec_to_tick(TIMER_INTERVAL));
-    
+
+    heartbeat_init();
+
     ipc_init();
     sched_init();
 

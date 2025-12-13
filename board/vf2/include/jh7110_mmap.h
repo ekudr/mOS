@@ -37,6 +37,7 @@
 
 #define PLIC_SCLAIM(hart) (PLIC_CLAIM + (hart-1)*0x2000)
 
-
+// pin control
+#define AON_PINCTRL_BASE 0x17020000UL
 
 #endif /* __JH7110_MMAP_H__ */

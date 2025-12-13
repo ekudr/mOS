@@ -24,6 +24,7 @@ kernel_sources = [
     'khash.c',
     'signal.c',
     'cap.c',
+    'heartbeat.c',
 ]
 
 kernel_a = static_library(

@@ -61,7 +61,7 @@ void clockintr()
     ticks++;
 //    wakeup(&ticks);
     release(&tickslock);
-//    board_heartbeat();
+    heartbeat();
 //    debug(".");
 }
 

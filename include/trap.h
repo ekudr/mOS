@@ -22,6 +22,8 @@ void plic_complete(uint32_t irq);
 // 0 if not recognized.
 int devintr(void);
 
+void heartbeat(void);
+
 void delivery_signal(task_t * t, signal_t sig, signal_payload_t payload);
 uint64_t usersigret(void);
 
