@@ -1,0 +1,1 @@
+move /Y build\img.bin C:\OpenTFTPServer

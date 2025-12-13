@@ -12,12 +12,7 @@ __attribute__((noreturn)) void exit(int status)
     }
     
 }
-/*
-uint64_t getpid(void)
-{
-    return __syscall(SYS_getpid);
-}
-*/
+
 
 // int snd_msg(uint64_t qid, uint64_t type, uintptr_t buf, uint64_t size, uint64_t flags)
 // {
@@ -49,6 +44,10 @@ void *mmap(void *addr, uint64_t len, uint64_t flags, void *paddr)
     return (void *)__syscall(SYS_mmap,  (uint64_t)addr,(uint64_t)len, (uint64_t)flags, (uint64_t)paddr);
 }
 
+int cash_flash(void *addr, size_t size)
+{
+    return (int) __syscall(SYS_cache_flush, (uint64_t)addr, (uint64_t)size);
+}
 
 kerrno_t irq_set(uint64_t irq, uint64_t flags)
 {
@@ -171,3 +170,4 @@ int cap_create(uint64_t dest, msg_info_t info)
 
     return o_info;
 }
+

@@ -44,7 +44,7 @@ static inode_t *inode_create(const char*name, inode_type_t type, int cap_id)
        
     memset(node, 0, sizeof(*node));
     node->id = alloc_node_id();    
-    strncpy(node->name, name, sizeof(node->name)-1); 
+    strncpy(node->name, name, sizeof(node->name)); 
     node->type = type;
     list_init(&node->parent);
     list_init(&node->children);
@@ -142,6 +142,7 @@ int main()
     {
         inode_t *node;
         struct vfs_msg *msg = (struct vfs_msg *)get_ipc_buffer()->msg;
+
         uint64_t info = ipc_recv(vfs_cap, NULL);
         int ret = (int)label_from_msginfo_word(info);
         if (ret < 0 || !length_from_msginfo_word(info)) {
@@ -157,17 +158,20 @@ int main()
             if (!node) {
                 memset(msg, 0, sizeof(struct vfs_msg));
                 msg->ret = -ENOENT;
+                info = msginfo_word_new(0,sizeof(struct vfs_msg)/8, 0, 0);
             }
             else if (node->type == VFS_DEVICE) {
-                    int g_cap = cap_grant(node->dev_data.cap_id, msg->pid, -1, CRIGHT_SND);
-                    memset(msg, 0, sizeof(struct vfs_msg));
-                    msg->ret = g_cap;
+                    memset(msg, 0, sizeof(struct vfs_msg));                
+//                    int g_cap = cap_grant(node->dev_data.cap_id, msg->pid, -1, CRIGHT_SND);
+                    ipc_set_cap(0, node->dev_data.cap_id);
+                    msg->ret = 1;
+                    info = msginfo_word_new(0,sizeof(struct vfs_msg)/8, 1, 0);
             } else {
                 memset(msg, 0, sizeof(struct vfs_msg));
                 msg->ret = node->id;
+                info = msginfo_word_new(0,sizeof(struct vfs_msg)/8, 0, 0);
             }
-                
-            info = msginfo_word_new(0,sizeof(struct vfs_msg)/8, 0, 0);
+                            
             ipc_reply(info);
             break;
         
@@ -190,15 +194,17 @@ int main()
                 break;
             }
             char parent_path[128];
+            memset(parent_path, 0, 128);
             char name[32];
+            memset(name, 0, 32);
             size_t parent_len = lastslash - full;
             if (parent_len >= sizeof(parent_path)) parent_len = sizeof(parent_path)-1;
             strncpy(parent_path, full, parent_len);
             parent_path[parent_len] = '\0';
             strncpy(name, lastslash+1, sizeof(name)-1);
             name[sizeof(name)-1] = '\0'; 
-            
-            node = vfs_create_node(root, parent_path, name, msg->inode_type, msg->cap_id);
+
+            node = vfs_create_node(root, parent_path, name, msg->inode_type, ipc_get_cap(0));
 
             memset(msg, 0, sizeof(struct vfs_msg)); 
             if (!node) {
@@ -206,7 +212,7 @@ int main()
             } else {                
                 msg->ret = node->id;
             }
-            
+//            debug("[VFS] node %d name: %s\n", node->id, node->name);
             info = msginfo_word_new(0,sizeof(struct vfs_msg)/8, 0, 0);
             ipc_reply(info);
             break;

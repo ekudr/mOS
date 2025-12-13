@@ -14,11 +14,12 @@ enum endpoint_status {
 typedef struct endpoint
 {
     struct kobject   hdr;
-//    spinlock_t  lock;
-    int         state;
+    int         state;    
+    spinlock_t  lock;
+
 //    list_head_t msglist; // del
     list_head_t queue;
-//    struct task *owner;
+    struct task *owner;
     uint64_t    badge;
     uint64_t    count;
 } endpoint_t;

@@ -54,10 +54,15 @@ libc_mosstd = [
     'mosstd/console.c',
     'mosstd/block_dev.c',
     'mosstd/ext4.c',
+    'mosstd/wm_server.c',
 ]
 
 libc_malloc = [
     
+]
+
+libc_sched = [
+    'sched/sched_yield.c',
 ]
 
 libc_signal = [
@@ -71,7 +76,8 @@ libc_a = static_library(
         libc_string,
         libc_malloc,
         libc_mosstd,
-        libc_signal, 
+        libc_signal,
+        libc_sched, 
     ],
     include_directories: [
         include_libc,

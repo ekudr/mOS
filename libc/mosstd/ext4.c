@@ -75,7 +75,7 @@ ext4fs_get_extent_block(block_dev_t *disk, struct ext2_data *data, struct ext_bl
 
 		if (ext_block->eh_magic != EXT4_EXT_MAGIC)
 			return NULL;
-// debug("[EXT_FS] %s ext_block->eh_magic 0x%X ext_block->eh_depth %d\n", __func__, ext_block->eh_magic, ext_block->eh_depth);
+// cons_out("[EXT_FS] %s ext_block->eh_magic 0x%X ext_block->eh_depth %d\n", __func__, ext_block->eh_magic, ext_block->eh_depth);
 		if (ext_block->eh_depth == 0)
 			return ext_block;
 
@@ -121,7 +121,7 @@ static int ext4fs_blockgroup (block_dev_t *disk, struct ext2_data *data,
 			group / desc_per_blk;
 	blkoff = (group % desc_per_blk) * desc_size;
 
-//	debug("[EXT_FS] ext4fs read %d group descriptor (blkno %ld blkoff %u)\n",
+//	cons_out("[EXT_FS] ext4fs read %d group descriptor (blkno %ld blkoff %u)\n",
 //	      group, blkno, blkoff);
 
 	return ext4fs_devread(disk, (uint64_t)blkno <<
@@ -156,11 +156,11 @@ int ext4fs_read_inode(block_dev_t *disk, struct ext2_data *data, int ino, struct
 		free(blkgrp);
 		return err;
 	}
-//    debug("[EXT_FS] %s read blockgroup block id %d\n", __func__, blkgrp->block_id);
-//    debug("[EXT_FS] blockgroup checksum 0x%X flags 0x%X\n", blkgrp->bg_checksum, blkgrp->bg_flags);
-//    debug("[EXT_FS] free blocks %d free inodes %d\n", blkgrp->free_blocks, blkgrp->free_inodes);
+//    cons_out("[EXT_FS] %s read blockgroup block id %d\n", __func__, blkgrp->block_id);
+//    cons_out("[EXT_FS] blockgroup checksum 0x%X flags 0x%X\n", blkgrp->bg_checksum, blkgrp->bg_flags);
+//    cons_out("[EXT_FS] free blocks %d free inodes %d\n", blkgrp->free_blocks, blkgrp->free_inodes);
 	inodes_per_block = EXT2_BLOCK_SIZE(data) / fs->inodesz;
-//    debug("[EXT_FS] %s inode per block %d\n", __func__, inodes_per_block);
+//    cons_out("[EXT_FS] %s inode per block %d\n", __func__, inodes_per_block);
 	if ( inodes_per_block == 0 ) {
 		free(blkgrp);
 		return -EINVAL;
@@ -209,7 +209,7 @@ long int read_allocated_block(block_dev_t *disk, struct ext2_inode *inode, int f
 	blksz = EXT2_BLOCK_SIZE(ext4fs_root);
 	log2_blksz = LOG2_BLOCK_SIZE(ext4fs_root) - 9 /*get_fs()->dev_desc->log2blksz*/;
 
-//    debug("[EXT_FS] %s blksz %d log2_blksz %d inode->flags 0x%X\n", __func__, blksz, log2_blksz, inode->flags);
+//    cons_out("[EXT_FS] %s blksz %d log2_blksz %d inode->flags 0x%X\n", __func__, blksz, log2_blksz, inode->flags);
 	if (inode->flags & EXT4_EXTENTS_FL) {
 		long int startblock, endblock;
 		struct ext_block_cache *c, cd;
@@ -226,18 +226,18 @@ long int read_allocated_block(block_dev_t *disk, struct ext2_inode *inode, int f
 		ext_block = ext4fs_get_extent_block(disk,ext4fs_root, c, (struct ext4_extent_header *)
 						inode->b.blocks.dir_blocks, fileblock, log2_blksz);
 		if (!ext_block) {
-			debug("invalid extent block\n");
+			cons_out("invalid extent block\n");
 			if (!cache)
 				ext_cache_fini(c);
 			return -EINVAL;
 		}
 
 		extent = (struct ext4_extent *)(ext_block + 1);
-//debug("[EXT_FS] %s ext_block->eh_entries %d \n", __func__, ext_block->eh_entries);
+//cons_out("[EXT_FS] %s ext_block->eh_entries %d \n", __func__, ext_block->eh_entries);
 		for (i = 0; i < ext_block->eh_entries; i++) {
 			startblock = extent[i].ee_block;
 			endblock = startblock + extent[i].ee_len;
-//debug("[EXT_FS] i=%d extent[i].ee_block %d extent[i].ee_len %d fileblock %d\n", i, extent[i].ee_block, extent[i].ee_len, fileblock);
+//cons_out("[EXT_FS] i=%d extent[i].ee_block %d extent[i].ee_len %d fileblock %d\n", i, extent[i].ee_block, extent[i].ee_len, fileblock);
 			if (startblock > fileblock) {
 				/* Sparse file */
 				if (!cache)
@@ -268,7 +268,7 @@ long int read_allocated_block(block_dev_t *disk, struct ext2_inode *inode, int f
 		if (ext4fs_indir1_block == NULL) {
 			ext4fs_indir1_block = malloc(blksz);
 			if (ext4fs_indir1_block == NULL) {
-				debug("** SI ext2fs read block (indir 1)"
+				cons_out("** SI ext2fs read block (indir 1)"
 					"malloc failed. **\n");
 				return -1;
 			}
@@ -282,7 +282,7 @@ long int read_allocated_block(block_dev_t *disk, struct ext2_inode *inode, int f
 			ext4fs_indir1_blkno = -1;
 			ext4fs_indir1_block = malloc(blksz);
 			if (ext4fs_indir1_block == NULL) {
-				debug("** SI ext2fs read block (indir 1):"
+				cons_out("** SI ext2fs read block (indir 1):"
 					"malloc failed. **\n");
 				return -1;
 			}
@@ -293,7 +293,7 @@ long int read_allocated_block(block_dev_t *disk, struct ext2_inode *inode, int f
 			err = ext4fs_devread(disk, (uint64_t)inode->b.blocks.indir_block << log2_blksz, 0,
 					   blksz, (char *)ext4fs_indir1_block);
 			if (err < 0) {
-				debug("** SI ext2fs read block (indir 1)"
+				cons_out("** SI ext2fs read block (indir 1)"
 					"failed. **\n");
 				return err;
 			}
@@ -311,7 +311,7 @@ long int read_allocated_block(block_dev_t *disk, struct ext2_inode *inode, int f
 		if (ext4fs_indir1_block == NULL) {
 			ext4fs_indir1_block = malloc(blksz);
 			if (ext4fs_indir1_block == NULL) {
-				debug("** DI ext2fs read block (indir 2 1)"
+				cons_out("** DI ext2fs read block (indir 2 1)"
 					"malloc failed. **\n");
 				return -1;
 			}
@@ -325,7 +325,7 @@ long int read_allocated_block(block_dev_t *disk, struct ext2_inode *inode, int f
 			ext4fs_indir1_blkno = -1;
 			ext4fs_indir1_block = malloc(blksz);
 			if (ext4fs_indir1_block == NULL) {
-				debug("** DI ext2fs read block (indir 2 1)"
+				cons_out("** DI ext2fs read block (indir 2 1)"
 					"malloc failed. **\n");
 				return -1;
 			}
@@ -336,7 +336,7 @@ long int read_allocated_block(block_dev_t *disk, struct ext2_inode *inode, int f
 			err = ext4fs_devread(disk, (uint64_t)inode->b.blocks.double_indir_block << log2_blksz,
 					   0, blksz, (char *)ext4fs_indir1_block);
 			if (err < 0) {
-				debug("** DI ext2fs read block (indir 2 1)"
+				cons_out("** DI ext2fs read block (indir 2 1)"
 					"failed. **\n");
 				return err;
 			}
@@ -346,7 +346,7 @@ long int read_allocated_block(block_dev_t *disk, struct ext2_inode *inode, int f
 		if (ext4fs_indir2_block == NULL) {
 			ext4fs_indir2_block = malloc(blksz);
 			if (ext4fs_indir2_block == NULL) {
-				debug("** DI ext2fs read block (indir 2 2)"
+				cons_out("** DI ext2fs read block (indir 2 2)"
 					"malloc failed. **\n");
 				return -1;
 			}
@@ -360,7 +360,7 @@ long int read_allocated_block(block_dev_t *disk, struct ext2_inode *inode, int f
 			ext4fs_indir2_blkno = -1;
 			ext4fs_indir2_block = malloc(blksz);
 			if (ext4fs_indir2_block == NULL) {
-				debug("** DI ext2fs read block (indir 2 2)"
+				cons_out("** DI ext2fs read block (indir 2 2)"
 					"malloc failed. **\n");
 				return -1;
 			}
@@ -371,7 +371,7 @@ long int read_allocated_block(block_dev_t *disk, struct ext2_inode *inode, int f
 			err = ext4fs_devread(disk, (uint64_t)ext4fs_indir1_block[rblock / perblock] << log2_blksz, 0,
 						blksz, (char *)ext4fs_indir2_block);
 			if (err < 0) {
-				debug("** DI ext2fs read block (indir 2 2)"
+				cons_out("** DI ext2fs read block (indir 2 2)"
 					"failed. **\n");
 				return err;
 			}
@@ -389,7 +389,7 @@ long int read_allocated_block(block_dev_t *disk, struct ext2_inode *inode, int f
 		if (ext4fs_indir1_block == NULL) {
 			ext4fs_indir1_block = malloc(blksz);
 			if (ext4fs_indir1_block == NULL) {
-				debug("** TI ext2fs read block (indir 2 1)"
+				cons_out("** TI ext2fs read block (indir 2 1)"
 					"malloc failed. **\n");
 				return -1;
 			}
@@ -403,7 +403,7 @@ long int read_allocated_block(block_dev_t *disk, struct ext2_inode *inode, int f
 			ext4fs_indir1_blkno = -1;
 			ext4fs_indir1_block = malloc(blksz);
 			if (ext4fs_indir1_block == NULL) {
-				debug("** TI ext2fs read block (indir 2 1)"
+				cons_out("** TI ext2fs read block (indir 2 1)"
 					"malloc failed. **\n");
 				return -1;
 			}
@@ -414,7 +414,7 @@ long int read_allocated_block(block_dev_t *disk, struct ext2_inode *inode, int f
 			err = ext4fs_devread(disk, (uint64_t)inode->b.blocks.triple_indir_block << log2_blksz,
                     0, blksz, (char *)ext4fs_indir1_block);
 			if (err < 0) {
-				debug("** TI ext2fs read block (indir 2 1)"
+				cons_out("** TI ext2fs read block (indir 2 1)"
 					"failed. **\n");
 				return err;
 			}
@@ -424,7 +424,7 @@ long int read_allocated_block(block_dev_t *disk, struct ext2_inode *inode, int f
 		if (ext4fs_indir2_block == NULL) {
 			ext4fs_indir2_block = malloc(blksz);
 			if (ext4fs_indir2_block == NULL) {
-				debug("** TI ext2fs read block (indir 2 2)"
+				cons_out("** TI ext2fs read block (indir 2 2)"
 					"malloc failed. **\n");
 				return -1;
 			}
@@ -438,7 +438,7 @@ long int read_allocated_block(block_dev_t *disk, struct ext2_inode *inode, int f
 			ext4fs_indir2_blkno = -1;
 			ext4fs_indir2_block = malloc(blksz);
 			if (ext4fs_indir2_block == NULL) {
-				debug("** TI ext2fs read block (indir 2 2)"
+				cons_out("** TI ext2fs read block (indir 2 2)"
 					"malloc failed. **\n");
 				return -1;
 			}
@@ -449,7 +449,7 @@ long int read_allocated_block(block_dev_t *disk, struct ext2_inode *inode, int f
 			err = ext4fs_devread(disk, (uint64_t)ext4fs_indir1_block[rblock / perblock_parent] <<
 						log2_blksz, 0, blksz, (char *)ext4fs_indir2_block);
 			if (err < 0) {
-				debug("** TI ext2fs read block (indir 2 2)"
+				cons_out("** TI ext2fs read block (indir 2 2)"
 					"failed. **\n");
 				return err;
 			}
@@ -459,7 +459,7 @@ long int read_allocated_block(block_dev_t *disk, struct ext2_inode *inode, int f
 		if (ext4fs_indir3_block == NULL) {
 			ext4fs_indir3_block = malloc(blksz);
 			if (ext4fs_indir3_block == NULL) {
-				debug("** TI ext2fs read block (indir 2 2)"
+				cons_out("** TI ext2fs read block (indir 2 2)"
 					"malloc failed. **\n");
 				return -1;
 			}
@@ -473,7 +473,7 @@ long int read_allocated_block(block_dev_t *disk, struct ext2_inode *inode, int f
 			ext4fs_indir3_blkno = -1;
 			ext4fs_indir3_block = malloc(blksz);
 			if (ext4fs_indir3_block == NULL) {
-				debug("** TI ext2fs read block (indir 2 2)"
+				cons_out("** TI ext2fs read block (indir 2 2)"
 					"malloc failed. **\n");
 				return -1;
 			}
@@ -484,7 +484,7 @@ long int read_allocated_block(block_dev_t *disk, struct ext2_inode *inode, int f
 			err = ext4fs_devread(disk, (uint64_t)ext4fs_indir2_block[(rblock / perblock_child) % (blksz / 4)]
                      << log2_blksz, 0, blksz, (char *)ext4fs_indir3_block);
 			if (err < 0) {
-				debug("** TI ext2fs read block (indir 2 2)"
+				cons_out("** TI ext2fs read block (indir 2 2)"
 				       "failed. **\n");
 				return err;
 			}
@@ -494,7 +494,7 @@ long int read_allocated_block(block_dev_t *disk, struct ext2_inode *inode, int f
 
 		blknr = ext4fs_indir3_block[rblock % perblock_child];
 	}
-	debug("read_allocated_block %ld\n", blknr);
+	cons_out("read_allocated_block %ld\n", blknr);
 
 	return blknr;
 }
@@ -542,19 +542,19 @@ int ext4fs_iterate_dir(block_dev_t *disk, struct ext2fs_node *dir, char *name,
 	uint64_t actread;
 	struct ext2fs_node *diro = (struct ext2fs_node *) dir;
 
-//#ifdef DEBUG
+//#ifdef cons_out
 //	if (name != NULL)
-//		debug("Iterate dir %s\n", name);
-//#endif /* of DEBUG */
+//		cons_out("Iterate dir %s\n", name);
+//#endif /* of cons_out */
 
 	if (!diro->inode_read) {
 		err = ext4fs_read_inode(disk, diro->data, diro->ino, &diro->inode);
 		if (err < 0) {
-            debug("[EXT_FS] read inode error %d in %s\n", err, __func__);
+            cons_out("[EXT_FS] read inode error %d in %s\n", err, __func__);
 			return err;
         }
 	}
-//    debug("[EXT_FS] Inode size %d\n", diro->inode.size);
+//    cons_out("[EXT_FS] Inode size %d\n", diro->inode.size);
 	/* Search the file.  */
 	while (fpos < diro->inode.size) {
 		struct ext2_dirent dirent;
@@ -563,12 +563,12 @@ int ext4fs_iterate_dir(block_dev_t *disk, struct ext2fs_node *dir, char *name,
 					   (char *)&dirent, &actread);
 
 		if (err < 0) {
-            debug("[EXT_FS] read file error %d in %s\n", err, __func__);
+            cons_out("[EXT_FS] read file error %d in %s\n", err, __func__);
 			return err;
         }
 
 		if (dirent.direntlen == 0) {
-			debug("Failed to iterate over directory %s\n", name);
+			cons_out("Failed to iterate over directory %s\n", name);
 			return -ENOENT;
 		}
 
@@ -583,7 +583,7 @@ int ext4fs_iterate_dir(block_dev_t *disk, struct ext2fs_node *dir, char *name,
 						  dirent.namelen, filename,
 						  &actread);
 			if (err < 0) {
-                debug("[EXT_FS] read file error %d in %s\n", err, __func__);
+                cons_out("[EXT_FS] read file error %d in %s\n", err, __func__);
 				return err;
             }    
 
@@ -608,7 +608,7 @@ int ext4fs_iterate_dir(block_dev_t *disk, struct ext2fs_node *dir, char *name,
 			} else {
 				err = ext4fs_read_inode(disk, diro->data, dirent.inode, &fdiro->inode);
 				if (err < 0) {
-                    debug("[EXT_FS] read file error %d in %s\n", err, __func__);
+                    cons_out("[EXT_FS] read file error %d in %s\n", err, __func__);
 					free(fdiro);
 					return err;
 				}
@@ -622,14 +622,14 @@ int ext4fs_iterate_dir(block_dev_t *disk, struct ext2fs_node *dir, char *name,
 					type = FILETYPE_REG;
 				}
 			}
-//#ifdef DEBUG
-//			debug("iterate >%s<\n", filename);
-//#endif /* of DEBUG */
- //           debug("[EXT_FS] %s name 0x%X fnode 0x%X ftype 0x%X\n", __func__, name, fnode, ftype);
+//#ifdef cons_out
+//			cons_out("iterate >%s<\n", filename);
+//#endif /* of cons_out */
+ //           cons_out("[EXT_FS] %s name 0x%X fnode 0x%X ftype 0x%X\n", __func__, name, fnode, ftype);
 			if ((name != NULL) && (fnode != NULL)
 			    && (ftype != NULL)) {
                     
- //           debug("[EXT_FS] name %s - %d filename %s - %d\n", name, nlen, filename, sizeof(filename));
+ //           cons_out("[EXT_FS] name %s - %d filename %s - %d\n", name, nlen, filename, sizeof(filename));
                 if(!memcmp(filename, name, nlen)){
 					*ftype = type;
 					*fnode = fdiro;
@@ -646,19 +646,19 @@ int ext4fs_iterate_dir(block_dev_t *disk, struct ext2fs_node *dir, char *name,
 				}
 				switch (type) {
 				case FILETYPE_DIRECTORY:
-					debug("<DIR> ");
+					cons_out("<DIR> ");
 					break;
 				case FILETYPE_SYMLINK:
-					debug("<SYM> ");
+					cons_out("<SYM> ");
 					break;
 				case FILETYPE_REG:
-					debug("      ");
+					cons_out("      ");
 					break;
 				default:
-					debug("< ? > ");
+					cons_out("< ? > ");
 					break;
 				}
-				debug("%10u %s\n", fdiro->inode.size, filename);
+				cons_out("%10u %s\n", fdiro->inode.size, filename);
 			}
 			free(fdiro);
 		}
@@ -740,7 +740,7 @@ int ext4fs_find_file1(block_dev_t *disk, const char *currpath, struct ext2fs_nod
 
 		// Iterate over the directory.
 		found = ext4fs_iterate_dir(disk, currnode, name, &currnode, &type);
-//        debug("[EXT_FS] %s err %d\n",__func__,found);
+//        cons_out("[EXT_FS] %s err %d\n",__func__,found);
 
         if (found != 1)
             return -1;
@@ -767,7 +767,7 @@ int ext4fs_find_file1(block_dev_t *disk, const char *currpath, struct ext2fs_nod
 				return 0;
 			}
 
-			debug("Got symlink >%s<\n", symlink);
+			cons_out("Got symlink >%s<\n", symlink);
 
 			if (symlink[0] == '/') {
 				ext4fs_free_node(oldnode, currroot);
@@ -836,7 +836,7 @@ int ext4fs_open(block_dev_t *disk, const char *filename, uintptr_t *len)
 	ext4fs_file = NULL;
 	err = ext4fs_find_file(disk, filename, &ext4fs_root->diropen, &fdiro,
 				  FILETYPE_REG);
-//    debug("[EXT_FS] %s error %d\n", __func__, err);
+//    cons_out("[EXT_FS] %s error %d\n", __func__, err);
 	if (err < 0)
 		goto fail;
 
@@ -872,28 +872,28 @@ int ext4fs_mount(block_dev_t *disk)
         return -EINVAL;
     }
     
-//    debug("[EXT_FS] size of data structure %d\n", sizeof(struct ext2_data));
+//    cons_out("[EXT_FS] size of data structure %d\n", sizeof(struct ext2_data));
     data = (struct ext2_data *)malloc(SUPERBLOCK_SIZE);
 
 	// Read the superblock.
 	err = ext4_read_superblock(disk, (char *)&data->sblock);
 
     if (err < 0) {
-        debug("[EXT4_FS] read suberblock return %d\n", err);
+        cons_out("[EXT4_FS] read suberblock return %d\n", err);
         goto fail; 
     }
 
     if(data->sblock.magic != EXT2_MAGIC){
-        debug("[EXT4_FS] NOT EXT2/3/4 FS\n");
+        cons_out("[EXT4_FS] NOT EXT2/3/4 FS\n");
         return -ENOENT;
     }
 
-    debug("[EXT4_FS] Revision %d\n", data->sblock.revision_level);
+    cons_out("[EXT4_FS] Revision %d\n", data->sblock.revision_level);
     if (data->sblock.revision_level == 0) {
 		fs->inodesz = 128;
 		fs->gdsize = 32;
 	} else {
-		debug("[EXT4_FS] features COMPAT: %08x INCOMPAT: %08x RO_COMPAT: %08x\n",
+		cons_out("[EXT4_FS] features COMPAT: %08x INCOMPAT: %08x RO_COMPAT: %08x\n",
 		      data->sblock.feature_compatibility,
 		      data->sblock.feature_incompat,
 		      data->sblock.feature_ro_compat);
@@ -904,21 +904,21 @@ int ext4fs_mount(block_dev_t *disk)
 			data->sblock.descriptor_size : 32;
 	}
 
-	debug("[EXT4_FS] EXT2 rev %d, inode_size %d, descriptor size %d\n",
+	cons_out("[EXT4_FS] EXT2 rev %d, inode_size %d, descriptor size %d\n",
 	      data->sblock.revision_level,
 	      fs->inodesz, fs->gdsize);
 
-    debug("[EXT4_FS] Total inodes %d\n", data->sblock.total_inodes);
-    debug("[EXT4_FS] Total blocks %d\n", data->sblock.total_blocks);
-    debug("[EXT4_FS] Free inodes %d\n", data->sblock.free_inodes);
-    debug("[EXT4_FS] Free blocks %d\n", data->sblock.free_blocks);
-    debug("[EXT4_FS] FS state 0x%X\n", data->sblock.fs_state);
-    debug("[EXT4_FS] Inode size %d\n", data->sblock.inode_size);
-    debug("[EXT4_FS] Block size %d\n", data->sblock.log2_block_size);
-    debug("[EXT4_FS] Fragment size %d\n", data->sblock.log2_fragment_size);
-    debug("[EXT4_FS] inodes per group %d\n", data->sblock.inodes_per_group);
-    debug("[EXT4_FS] first data block %d\n", data->sblock.first_data_block);
-    debug("[EXT4_FS] first inode %d\n", data->sblock.first_inode);
+    cons_out("[EXT4_FS] Total inodes %d\n", data->sblock.total_inodes);
+    cons_out("[EXT4_FS] Total blocks %d\n", data->sblock.total_blocks);
+    cons_out("[EXT4_FS] Free inodes %d\n", data->sblock.free_inodes);
+    cons_out("[EXT4_FS] Free blocks %d\n", data->sblock.free_blocks);
+    cons_out("[EXT4_FS] FS state 0x%X\n", data->sblock.fs_state);
+    cons_out("[EXT4_FS] Inode size %d\n", data->sblock.inode_size);
+    cons_out("[EXT4_FS] Block size %d\n", data->sblock.log2_block_size);
+    cons_out("[EXT4_FS] Fragment size %d\n", data->sblock.log2_fragment_size);
+    cons_out("[EXT4_FS] inodes per group %d\n", data->sblock.inodes_per_group);
+    cons_out("[EXT4_FS] first data block %d\n", data->sblock.first_data_block);
+    cons_out("[EXT4_FS] first inode %d\n", data->sblock.first_inode);
 
     data->diropen.data = data;
 	data->diropen.ino = 2;
@@ -931,13 +931,13 @@ int ext4fs_mount(block_dev_t *disk)
 
 	ext4fs_root = data;
 
-    debug("[EXT_FS] inode virsion %d mode %d\n", data->inode->version, data->inode->mode);
-    debug("[EXT_FS] inode size %d mode %d\n", data->inode->size, data->inode->blockcnt);
+    cons_out("[EXT_FS] inode virsion %d mode %d\n", data->inode->version, data->inode->mode);
+    cons_out("[EXT_FS] inode size %d mode %d\n", data->inode->size, data->inode->blockcnt);
 
     return SUCCESS;
 
 fail:
-	debug("[EXT_FS] Failed to mount ext2 filesystem...\n");
+	cons_out("[EXT_FS] Failed to mount ext2 filesystem...\n");
 
 	free(data);
 	ext4fs_root = NULL;
@@ -963,7 +963,7 @@ int ext4fs_ls(block_dev_t *disk, const char *dirname)
 	err = ext4fs_find_file(disk, dirname, &ext4fs_root->diropen, &dirnode,
 				  FILETYPE_DIRECTORY);
 	if (err != 1) {
-		debug("** Can not find directory. **\n");
+		cons_out("** Can not find directory. **\n");
 		if (dirnode)
 			ext4fs_free_node(dirnode, &ext4fs_root->diropen);
 		return -1;
@@ -983,7 +983,7 @@ int ext4_read_file(block_dev_t *disk, const char *filename, void *buf, uint64_t 
 
 	ret = ext4fs_open(disk, filename, &file_len);
 	if (ret < 0) {
-		debug("** File not found %s **\n", filename);
+		cons_out("** File not found %s **\n", filename);
 		return -1;
 	}
 
@@ -1031,7 +1031,7 @@ int ext4fs_read_file(block_dev_t *disk, struct ext2fs_node *node, uint64_t pos,
 	short err;
 	struct ext_block_cache cache;
 
- //   debug("[EXT_FS] %s pos %d len %d filesize %d\n", __func__, pos, len, filesize);
+ //   cons_out("[EXT_FS] %s pos %d len %d filesize %d\n", __func__, pos, len, filesize);
     
 	ext_cache_init(&cache);
 
@@ -1045,7 +1045,7 @@ int ext4fs_read_file(block_dev_t *disk, struct ext2fs_node *node, uint64_t pos,
 	}
 
 	blockcnt = lldiv(((len + pos) + blocksize - 1), blocksize);
-//    debug("[EXT_FS] log2_fs_blocksize %d blocksize %d blockcnt %d\n", log2_fs_blocksize, blocksize, blockcnt);
+//    cons_out("[EXT_FS] log2_fs_blocksize %d blocksize %d blockcnt %d\n", log2_fs_blocksize, blocksize, blockcnt);
 	for (i = lldiv(pos, blocksize); i < blockcnt; i++) {
 		long int blknr;
 		int blockoff = pos - (blocksize * i);
@@ -1074,7 +1074,7 @@ int ext4fs_read_file(block_dev_t *disk, struct ext2fs_node *node, uint64_t pos,
 			skipfirst = blockoff;
 			blockend -= skipfirst;
 		}
-//        debug("[EXT_FS] blknr %d blockend %d\n", blknr, blockend);
+//        cons_out("[EXT_FS] blknr %d blockend %d\n", blknr, blockend);
 		if (blknr) {
 			int err;
 
@@ -1088,7 +1088,7 @@ int ext4fs_read_file(block_dev_t *disk, struct ext2fs_node *node, uint64_t pos,
 							delayed_extent,
 							delayed_buf);
 					if (err) {
-                        debug("[EXT_FS] %s read error %d\n", __func__, err);
+                        cons_out("[EXT_FS] %s read error %d\n", __func__, err);
 						ext_cache_fini(&cache);
 						return -1;
 					}
@@ -1120,7 +1120,7 @@ int ext4fs_read_file(block_dev_t *disk, struct ext2fs_node *node, uint64_t pos,
 							delayed_extent,
 							delayed_buf);
 				if (err) {
-                    debug("[EXT_FS] %s read error %d\n", __func__, err);
+                    cons_out("[EXT_FS] %s read error %d\n", __func__, err);
 					ext_cache_fini(&cache);
 					return -1;
 				}
@@ -1143,7 +1143,7 @@ int ext4fs_read_file(block_dev_t *disk, struct ext2fs_node *node, uint64_t pos,
 					delayed_skipfirst, delayed_extent,
 					delayed_buf);
 		if (err) {
-            debug("[EXT_FS] %s read error %d\n", __func__, err);
+            cons_out("[EXT_FS] %s read error %d\n", __func__, err);
 			ext_cache_fini(&cache);
 			return -1;
 		}
@@ -1151,7 +1151,7 @@ int ext4fs_read_file(block_dev_t *disk, struct ext2fs_node *node, uint64_t pos,
 	}
 
 	*actread  = len;
-//   debug("[EXT_FS] %s &cache 0x%X cache.buf 0x%X\n", __func__, &cache, cache.buf);
+//   cons_out("[EXT_FS] %s &cache 0x%X cache.buf 0x%X\n", __func__, &cache, cache.buf);
 	ext_cache_fini(&cache);
    
 	return 0;
@@ -1167,7 +1167,7 @@ int ext_cache_read(block_dev_t *disk, struct ext_block_cache *cache, uint64_t bl
 	ext_cache_fini(cache);
 	//cache->buf = memalign(ARCH_DMA_MINALIGN, size);
     cache->buf = (char *)malloc(size);
-    debug("[EXT_FS] %s cache->buf 0x%X\n", __func__, cache->buf);
+    cons_out("[EXT_FS] %s cache->buf 0x%X\n", __func__, cache->buf);
 	if (!cache->buf)
 		return 0;
 	if (!ext4fs_devread(disk, block, 0, size, cache->buf)) {
@@ -1189,10 +1189,10 @@ int ext_cache_read(block_dev_t *disk, struct ext_block_cache *cache, uint64_t bl
 // #if (defined(__JH7110__) || defined(__SPACEMIT_K1__))	
 //     ext4fs_size("bianbu.bmp", &fsize);
   
-//     debug("Size of file is %d\n",fsize);
+//     cons_out("Size of file is %d\n",fsize);
 //     splash_bmp = (char *)malloc(fsize);
 //     ext4_read_file("bianbu.bmp", splash_bmp, 0, fsize, &len_read);
-//     debug("Read of %d\n",len_read);
+//     cons_out("Read of %d\n",len_read);
 //     video_bmp_display((uint8_t *)FB, splash_bmp, 900, 450);
 
 // 	free(splash_bmp);

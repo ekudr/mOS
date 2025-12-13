@@ -93,6 +93,7 @@ enum{
     MAP_EXEC    = 0x0040,
 };
 
+extern char _end[];
 
 void *malloc(size_t size);
 void free(void *ptr);

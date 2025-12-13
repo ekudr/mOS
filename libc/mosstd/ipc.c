@@ -7,11 +7,6 @@
 
 
 
-// int ipc_endpoint_create(uint32_t rights)
-// {
-//     return __syscall(SYS_endpt_crt, (uint64_t) rights);
-// }
-
 
 void *ipc_shm_attach(int cap_id, const void *addr, int flags)
 {

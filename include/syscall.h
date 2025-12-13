@@ -3,7 +3,8 @@
 #define _SYSCALL_H
 
 // System call numbers
-#define SYS_fork    1
+#define SYS_yield   1
+//#define SYS_fork    1
 #define SYS_exit    2
 #define SYS_wait    3
 #define SYS_pipe    4
@@ -28,6 +29,7 @@
 
 #define SYS_debug   22
 #define SYS_mmap    23
+#define SYS_cache_flush 24
 
 #define SYS_recv    30
 #define SYS_nb_recv 31
@@ -43,7 +45,7 @@
 #define SYS_irq_set 50
 #define SYS_irq_act 51
 
-// #define SYS_endpt_crt 60
+#define SYS_task_ctrl 60
 
 // #define SYS_ipc_snd 62
 // #define SYS_ipc_rcv 63

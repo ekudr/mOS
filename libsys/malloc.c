@@ -12,6 +12,8 @@ mem_mgr_t memory_manager;
 
 mem_mgr_t *gp_mmgr = NULL;
 
+void *heap_top;
+
 int mem_init(size_t size)
 {
     gp_mmgr = &memory_manager;
@@ -23,6 +25,8 @@ int mem_init(size_t size)
 
     gp_mmgr->sysmem = 0;
 
+    heap_top = (void *)PGROUNDUP((uint64_t)_end);
+
     if(request_heap(size) < 0)
         return -1;
 /*
@@ -33,20 +37,17 @@ int mem_init(size_t size)
     return SUCCESS;
 }
 
-static inline void
-__add_to_fast(mchunkptr_t chunk)
+static inline void __add_to_fast(mchunkptr_t chunk)
 {
     list_add(&gp_mmgr->qfast[fastbin_index(chunk->size)], &chunk->freelist);
 }
 
-static inline void
-__add_to_free(mchunkptr_t chunk)
+static inline void __add_to_free(mchunkptr_t chunk)
 {
     list_add(&gp_mmgr->qfree, &chunk->freelist);
 }
 
-static mchunkptr_t
-__split_chunk(mchunkptr_t chunk, uint64_t size)
+static mchunkptr_t __split_chunk(mchunkptr_t chunk, uint64_t size)
 {
     mchunkptr_t nchunk;
 //    debug("Srink the chunk 0x%lX sz 0x%lX -> 0x%lX\n", chunk, chunk->size, size);
@@ -68,8 +69,7 @@ __split_chunk(mchunkptr_t chunk, uint64_t size)
     return chunk;
 }
 
-static void*
-__find_free(size_t size)
+static void *__find_free(size_t size)
 {
     list_head_t *chpos;
 //    mem_heap_t *heap;
@@ -121,10 +121,13 @@ int request_heap(size_t size)
     
 //    debug("Request memory for heap 0x%lX bytes\n", bsize);
 //    heap = (mem_heap_t *)sbrk(bsize);
-    heap = (mem_heap_t *)mmap(0, bsize, MAP_PRIVATE | MAP_READ | MAP_WRITE, 0);
+
+    heap = (mem_heap_t *)mmap(heap_top, bsize, MAP_PRIVATE | MAP_READ | MAP_WRITE, 0);
 
     if(heap == NULL)
-        return -1;
+        return -ENOMEM;
+    heap_top += bsize;
+
 //    debug("Heap address returned 0x%lX\n", heap);
     list_init(&heap->heaplist);
 
@@ -143,8 +146,7 @@ int request_heap(size_t size)
 /*
  * Allocate memory. 
  */
-void*
-malloc(size_t size)
+void *malloc(size_t size)
 {
     void *ret;
     size = req2size(size);

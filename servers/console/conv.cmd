@@ -1,0 +1,1 @@
+riscv64-unknown-elf-objcopy -O elf64-littleriscv -I binary font.psf font.o

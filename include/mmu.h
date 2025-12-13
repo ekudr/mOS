@@ -224,5 +224,11 @@ kerrno_t mmu_memmap(pagetable_t pgtable, uint64_t vaddr, uint64_t size, int perm
 void mmu_free_pagetable(pagetable_t pagetable);
 void mmu_init(void);
 
+int mmu_move_pages(pagetable_t from, pagetable_t to, uint64_t va_src, 
+                    uint64_t va_dst, uint64_t len, int perm);
+
+
+                    void mmu_pt_dump(pagetable_t pt);
+
 #endif /* __ASSEMBLY__ */
 #endif /* __MMU_H__ */

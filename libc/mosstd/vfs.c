@@ -1,7 +1,7 @@
 #include <stdint.h>
 #include <mosstd.h>
 #include <string.h>
-#include <errno.h>
+#include <sched.h>
 
 #include <vfs.h>
 
@@ -15,11 +15,13 @@ int vfs_cap = 0;
 static int get_vfs_cap()
 {
     if (!vfs_cap) {
-        do {
-          vfs_cap = ns_lookup_cap("vfs");  
-        } while (vfs_cap <= 0);        
+        while(1) {
+            vfs_cap = ns_lookup_cap("vfs");  
+            if (vfs_cap > 0) break;
+            sched_yield();  
+        }        
     } 
-
+    
     return vfs_cap;
 }
 /*
@@ -59,7 +61,7 @@ int vfs_open(const char *path)
     msg->type    = VFS_OPEN;
     msg->pid     = getpid();
 
-    strncpy(msg->path, path, sizeof(msg->path)-1);
+    strncpy(msg->path, path, sizeof(msg->path));
 
     uint64_t info = msginfo_word_new(0, sizeof(struct vfs_msg)/8, 0, 0);
 
@@ -70,28 +72,32 @@ int vfs_open(const char *path)
     if (ret < 0 || !length_from_msginfo_word(info)) {
         debug("[VFS] Error open node %d \n", ret);
     }
-     
-    return msg->ret;
+    ret = (msg->ret < 0) ? msg->ret : ipc_get_cap(0); 
+    return ret;
 }
 
 int vfs_create(const char *path, inode_type_t type, int cap_id)
 {
     if (!path || !cap_id) return -EINVAL;
+
+    int pid = getpid();
     struct vfs_msg *msg = (struct vfs_msg *)get_ipc_buffer()->msg;
 
     int vfsid = get_vfs_cap();
 
-
-    int tr_cap = cap_transfer(cap_id, vfsid, CRIGHT_SND | CRIGHT_GRANT);
-    if (tr_cap < 0) return tr_cap;
+    // Copy cap to vfs
+    int tr_cap = cap_grant(cap_id, pid, -1, CRIGHT_SND | CRIGHT_GRANT);
+    if (tr_cap < 0) return tr_cap;    
 
     memset(msg, 0, sizeof(struct vfs_msg));    
     msg->type    = VFS_CREATE;
-    msg->cap_id  = tr_cap;
+//    msg->cap_id  = tr_cap;
     msg->inode_type = type;
-    strncpy(msg->path, path, sizeof(msg->path)-1);
+    strncpy(msg->path, path, sizeof(msg->path));
 
-    uint64_t info = msginfo_word_new(0, sizeof(struct vfs_msg)/8, 0, 0);
+    ipc_set_cap(0, tr_cap);
+
+    uint64_t info = msginfo_word_new(0, sizeof(struct vfs_msg)/8, 1, 0);
     info = ipc_call(vfsid, info);
     
     int ret = (int)label_from_msginfo_word(info);

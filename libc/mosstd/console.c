@@ -5,7 +5,7 @@
 #include <libsys/ipc.h>
 #include <mosstd.h>
 #include <errno.h>
-//#include <ipc.h>
+#include <sched.h>
 #include <vfs.h>
 #include <tty.h>
 
@@ -15,9 +15,14 @@ uint32_t id = 0;
 
 void open_console()
 {
-    do {
-        tty_cap = vfs_open("/dev/tty0");
-    } while (tty_cap <=0);
+    if (!tty_cap) {
+        while(1) {
+            tty_cap = vfs_open("/dev/con0");
+            if (tty_cap > 0) break;
+            
+            sched_yield();
+        }
+    }
 } 
 
 int console_puts(const char *str)

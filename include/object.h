@@ -3,6 +3,7 @@
 
 typedef enum {
     KO_NONE = 0,
+    KO_CNODE,
     KO_ENDPOINT,
     KO_FASTCALL,
     KO_REPLAY,
@@ -12,29 +13,29 @@ typedef enum {
     KO_TASK,
 } ko_type_t;
 
-#define KO_OWNER(ko)    (((kobject_t *)ko)->owner)
-#define KO_LOCK(ko)     (&((kobject_t *)ko)->lock)
-#define KO_TYPE(ko)    (((kobject_t *)ko)->type)
-#define lock_ko(ko)     acquire(&((kobject_t *)ko)->lock)
-#define unlock_ko(ko)   release(&((kobject_t *)ko)->lock)
+//#define KO_OWNER(ko)    (((kobject_t *)ko)->owner)
+//#define KO_LOCK(ko)     (&((kobject_t *)ko)->lock)
+//#define KO_TYPE(ko)    (((kobject_t *)ko)->type)
+//#define lock_ko(ko)     acquire(&((kobject_t *)ko)->lock)
+//#define unlock_ko(ko)   release(&((kobject_t *)ko)->lock)
 
 struct task;
 
 typedef struct kobject
 {
-    uint32_t    type;
-    uint64_t    refcount;
-    struct task *owner;
-    spinlock_t  lock;
+//    uint32_t    type;
+    uint16_t    refcount;
+//    struct task *owner;
+//    spinlock_t  lock;
 } kobject_t;
 
 static inline kobject_t *ko_init(kobject_t *ko, struct task *task, uint32_t type)
 {
     if (ko == NULL) return NULL;
     __atomic_store_n(&ko->refcount, 1, __ATOMIC_RELEASE);
-    initlock(&ko->lock, "obj");
-    ko->type = type;
-    ko->owner = task;
+//    initlock(&ko->lock, "obj");
+//    ko->type = type;
+//    ko->owner = task;
     return ko;
 }
 
@@ -47,12 +48,12 @@ static inline kobject_t *ko_get(kobject_t *ko)
 void mfree(void *ptr);
 
 
-static inline void ko_put(kobject_t *ko, void (*destroy)(kobject_t *))
+static inline void ko_put(kobject_t *ko, uint32_t type, void (*destroy)(kobject_t *, uint32_t))
 {
     if (ko == NULL) return;
     if (__atomic_sub_fetch(&ko->refcount, 1, __ATOMIC_ACQ_REL) == 1) {
         //destroying if last one
-        if (destroy) destroy(ko);
+        if (destroy) destroy(ko, type);
         else mfree(ko);
     }
 }

@@ -50,30 +50,34 @@ static inline uint64_t *get_extra_caps_pointer(task_t * t)
     return caps;
 }
 
-static uint64_t ipc_caps_transfer(uint64_t info, task_t *sender, task_t *receiver)
+static uint8_t ipc_caps_transfer(uint64_t info, task_t *sender, task_t *receiver)
 {
     int i;
-
-    ipc_msg_info_t mi = msginfo_from_word(info);
+    int n = xcaps_from_msginfo_word(info);
+    // debug("[CAP] ipc cap transfer %d caps from task %d to %d\n", xcaps_from_msginfo_word(info),
+    //         sender->pid, receiver->pid);
+//    ipc_msg_info_t mi = msginfo_from_word(info);
     
     uint64_t *sender_caps = get_extra_caps_pointer(sender);
 //    debug("\x1b[31m[IPC]\x1b[0m ipc_buf 0x%lX caps 0x%lX\n", sender->ipc_buf, sender_caps);
     uint64_t *receiver_caps = get_extra_caps_pointer(receiver);
 
-    for (i = 0; i < IPC_MAX_CAPS && sender_caps[i]!= 0; i++) {
+    for (i = 0; i < IPC_MAX_CAPS && sender_caps[i]!= 0 && i < n; i++) {
         // ??? check what rights should be provide
         receiver_caps[i] = cap_grant_into(sender, sender_caps[i], receiver, -1, 0);
     }
 
-    mi.extra_caps = i;
+
+//    mi.extra_caps = i;
     
-    info = word_from_msginfo(&mi);
-    return info;
+//    info = word_from_msginfo(&mi);
+    return i;
 }
 
 void do_ipc_transfer(task_t *sender, task_t *receiver)
 {
     int msg_transferred;
+    uint8_t xcaps;
     uint64_t info = sender->trapframe->a1;
     ipc_msg_info_t mi = msginfo_from_word(info);
     
@@ -81,17 +85,20 @@ void do_ipc_transfer(task_t *sender, task_t *receiver)
                                 receiver, (uint64_t *)receiver->ipc_buf, mi.length);
       
     // Transfer extra caps
+
     if (xcaps_from_msginfo_word(info))
     {
-        ipc_caps_transfer(info, sender, receiver);
+       xcaps = ipc_caps_transfer(info, sender, receiver);
     }
   
     // update message info on transferred msg and caps
 
     mi.length = msg_transferred;
+    mi.extra_caps = xcaps;
 
     info = word_from_msginfo(&mi);
     syscall_set_MR(receiver, 1, info);
+    syscall_set_MR(receiver, 0, sender->pid);
 }
 
 int ipc_init(void)
@@ -129,7 +136,7 @@ int sys_ipc_send(task_t *t, int cap_id, bool is_blocking, bool is_call)
 
     endpoint_t *ep = (endpoint_t *)ce->obj;
 
-    lock_ko(ep);
+    acquire(&ep->lock);
 //    debug("\x1b[31m[IPC]\x1b[0m send task %d ep stat %d\n", t->pid, ep->state);
     switch (ep->state)
     {
@@ -140,7 +147,7 @@ int sys_ipc_send(task_t *t, int cap_id, bool is_blocking, bool is_call)
             set_task_state_docall(t, is_call);
             list_add_tail(&ep->queue, &t->eplist);
             ep->state = EP_STATE_SEND;
-            sched_task_block(ep, KO_LOCK(ep), BLOCKED_SEND);
+            sched_task_block(ep, &ep->lock, BLOCKED_SEND);
     //        sched_task_sleep(t, KO_LOCK(ep));
         }
         break;
@@ -156,7 +163,7 @@ int sys_ipc_send(task_t *t, int cap_id, bool is_blocking, bool is_call)
         if (list_is_empty(&ep->queue)) ep->state = EP_STATE_IDLE;
         do_ipc_transfer(t, receiver);
 
-        task_t *server = KO_OWNER(ep);
+        task_t *server = ep->owner;
         if (is_call) {
             
             int rpl_cap = cap_replay_install(server, t);
@@ -168,10 +175,10 @@ int sys_ipc_send(task_t *t, int cap_id, bool is_blocking, bool is_call)
 //        sched_task_wakeup(receiver);
         sched_task_unblock(ep);
 
-        if (is_call) sched_task_block(t, KO_LOCK(ep), BLOCKED_SEND);
+        if (is_call) sched_task_block(t, &ep->lock, BLOCKED_SEND);
         break;
     }
-    unlock_ko(ep);
+    release(&ep->lock);
 
 
     return SUCCESS;
@@ -200,7 +207,7 @@ int sys_ipc_recieve(task_t *t, int cap_id, bool is_blocking)
    
     endpoint_t *ep = (endpoint_t *)ce->obj;
 
-    lock_ko(ep);
+    acquire(&ep->lock);
 //    debug("\x1b[31m[IPC]\x1b[0m receive task %d\n", t->pid);
     switch (ep->state)
     {
@@ -210,7 +217,7 @@ int sys_ipc_recieve(task_t *t, int cap_id, bool is_blocking)
         if (is_blocking) {
             list_add_tail(&ep->queue, &t->eplist);
             ep->state = EP_STATE_RECV;
-            sched_task_block(ep, KO_LOCK(ep), BLOCKED_RECV);
+            sched_task_block(ep, &ep->lock, BLOCKED_RECV);
 //            sched_task_sleep(t, KO_LOCK(ep));
         } else {
             // set a0 = 0 (bange)
@@ -249,7 +256,7 @@ int sys_ipc_recieve(task_t *t, int cap_id, bool is_blocking)
         break;
     }
     
-    unlock_ko(ep);
+    release(&ep->lock);
 
     return SUCCESS;
 }
@@ -265,7 +272,7 @@ int sys_ipc_reply(task_t *t)
     }        
 
     replay_t *r = (replay_t *)ce->obj;
-    if (KO_TYPE(r) != KO_REPLAY) return -EINVAL; 
+//    if (KO_TYPE(r) != KO_REPLAY) return -EINVAL; 
 
     task_t *client = r->sender;
     if (!client) return -EINVAL;
@@ -297,7 +304,7 @@ void *sys_ipc_shm_attach(task_t *t, int cap_id, const void *addr, int flags)
     }    
 
     shmem_block_t *shm = (shmem_block_t *)ce->obj;
-    if (shm->ko.type != KO_SHMEM) return NULL; 
+//    if (shm->ko.type != KO_SHMEM) return NULL; 
 
     sz = shm->npages << PAGE_SHIFT;
 
@@ -308,7 +315,7 @@ void *sys_ipc_shm_attach(task_t *t, int cap_id, const void *addr, int flags)
     }
 
     mreg->shmem_block = shm;
-    pgtable = t->mm->pagetable;
+    pgtable = t->pagetable;
 
     va = mreg->addr;
     p  = shm->head;

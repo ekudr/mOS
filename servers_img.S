@@ -1,4 +1,4 @@
 	.align 4
-	.section .payload
+	.section .payload , "a"
 
 	.incbin "../build/servers/servers.img"

@@ -31,21 +31,21 @@ int main()
         ns_msg_t *msg = (ns_msg_t *)get_ipc_buffer()->msg;
         int sender;
 //        debug("NS srvr resv msg 0x%lX size %d\n", msg, sizeof(msg));
-        uint64_t info = ipc_recv(0, NULL);
+        uint64_t info = ipc_recv(0x100, NULL);
         int ret = (int)label_from_msginfo_word(info);
         if (ret < 0 || !length_from_msginfo_word(info)) {
             debug("[NS] Error receiving message %d info 0x%lX\n", ret, info);
         }
         sender = msg->pid;
-//        debug("[NAMESERVER] resved msg type %d cap id %d\n", msg.type, msg.cap_id);
+//        debug("[NAMESERVER] resved msg type %d cap id %d from task %d\n", msg->type, msg->cap_id, sender);
         if (msg->type == NS_REGISTER) {
             if (count < MAX_NAMES) {
                 
                 strncpy(registry[count].name, msg->name, sizeof(registry[count].name)-1);
-//                debug("[NAMESERVER] received %s cap %d\n",msg.name, msg.cap_id);
+
                 if (ipc_get_cap(0) < 0) panic("[NS] received no cap");
                 registry[count].cap_id = ipc_get_cap(0);
-
+//                debug("[NAMESERVER] received %s cap 0x%lX\n",msg->name, ipc_get_cap(0));
                 count++;
 
                 memset(msg, 0, sizeof(ns_msg_t)); 
@@ -61,7 +61,7 @@ int main()
 
         } else if (msg->type == NS_LOOKUP) {
             int found = -1;
-//            debug("Looking for %s...\n", msg.name);
+//            debug("Looking for %s...\n", msg->name);
             for (int i=0; i < count; i++) {
                 if (strcmp(registry[i].name, msg->name) == 0){
                     found = registry[i].cap_id;
@@ -69,21 +69,26 @@ int main()
                     break;
                 }
             }
-            if (found) {
-                if (sender <= 0)
-                    return -EINVAL;
-                // Grant capability to requster
-                int g_cap = cap_grant(found, sender, -1 , CRIGHT_SND);
-                if (g_cap < 0) {
-//                    debug("Error granting cap %d \n", g_cap);
-                    for(;;);
-                }
-                found = g_cap;
-            }
+            int cap = 0;
             memset(msg, 0, sizeof(ns_msg_t));     
             msg->type = NS_REPLAY;
+            if (found > 0) {  
+                ipc_set_cap(0, found);  
+                cap = 1;         
+//                 if (sender <= 0)
+//                     return -EINVAL;
+//                 // Grant capability to requster
+// //                 int g_cap = cap_grant(found, sender, -1 , CRIGHT_SND);
+// //                 if (g_cap < 0) {
+// // //                    debug("Error granting cap %d \n", g_cap);
+// //                     for(;;);
+//                 }
+//                 found = g_cap;
+
+            }
+
             msg->cap_id = found;
-            info = msginfo_word_new(0,sizeof(ns_msg_t)/8, 0, 0);
+            info = msginfo_word_new(0,sizeof(ns_msg_t)/8, cap, 0);
             ipc_reply(info);
         }
        

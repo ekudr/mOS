@@ -108,18 +108,21 @@ int disk_read(block_dev_t *disk, uint64_t start, uint64_t blocks)
     uint64_t info = msginfo_word_new(0, sizeof(*sd_msg)/8, 0, 0);
     info = ipc_call(disk->disk_cap, info); 
     int ret = (int)label_from_msginfo_word(info);
+
     if (ret < 0 || !length_from_msginfo_word(info)) {
         return ret;
     }    
     if (sd_msg->type != MMC_OP_REPLY)
         return -EINVAL;
 
+    if (!sd_msg->msg.read.blocks) return -EIO;
+
     return SUCCESS;
 }
 
 int fs_devread(block_dev_t *disk, uint64_t sector, int byte_offset, int byte_len, char *buf) 
 {
-	unsigned block_len;
+	uint64_t block_len;
 	int log2blksz, err;
     int blksz = 512;
     
@@ -127,7 +130,7 @@ int fs_devread(block_dev_t *disk, uint64_t sector, int byte_offset, int byte_len
     // char sec_buf[blksz];
 
 	log2blksz = 9; //log2(blksz)
-
+ //   debug("\x1b[31m[READ]\x1b[0m disk read %d bytes\n", byte_len);
 //    debug("read %d bytes from sector %d, offset %d\n", byte_len, sector, byte_offset);
 //    debug("partition start %d total sectors %d\n", ext_fs.start_sect, ext_fs.total_sect);
 	// Check partition boundaries
@@ -179,19 +182,38 @@ int fs_devread(block_dev_t *disk, uint64_t sector, int byte_offset, int byte_len
 		return SUCCESS; 
 	}
 
-    err = disk_read(disk, sector+1, block_len >> log2blksz);
-    memcpy(buf, disk->buf, block_len);
-    if (err < 0) {
-        debug("[EXT_FS] ** %s block read error %d\n", __func__, err);
-        return err;  
+ //   debug("\x1b[31m[READ]\x1b[0m disk read %d blocks\n", block_len >> log2blksz);
+
+    uint64_t read_len;
+
+    while (block_len)
+    {
+
+        read_len = (block_len > disk->buf_size) ? disk->buf_size : block_len;
+    //    debug("\x1b[31m[READ]\x1b[0m read %d blocks\n", read_len >> log2blksz);        
+        err = disk_read(disk, sector+1, read_len >> log2blksz);
+        if (err < 0) {
+            debug("[EXT_FS] ** %s block read error %d\n", __func__, err);
+            return err;  
+        }
+        memcpy(buf, disk->buf, read_len);
+
+        block_len -= read_len;
+        buf += read_len;
+        byte_len -= read_len;
+        sector += read_len / blksz;
     }
+       
+
+
 	
-	block_len = byte_len & ~(blksz - 1);
-	buf += block_len;
-	byte_len -= block_len;
-	sector += block_len / blksz;
+	// block_len = byte_len & ~(blksz - 1);
+	// buf += block_len;
+	// byte_len -= block_len;
+	// sector += block_len / blksz;
 
 	if (byte_len != 0) {
+ //           debug("\x1b[31m[READ]\x1b[0m disk read rest of %d bytes\n", byte_len);
 		// read rest of data which are not in whole sector
         err = disk_read(disk, sector+1, 1);
         if (err < 0) {

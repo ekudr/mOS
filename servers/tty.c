@@ -87,7 +87,7 @@ void panic(const char *str)
 void
 uart_putc(char ch)
 {
-    while ((uart_regr(UART_LSR) & UART_LSR_BUF_EMPTY_MASK) == 0);
+    while ((uart_regr(UART_LSR) & UART_LSR_EMPTY_MASK /*UART_LSR_BUF_EMPTY_MASK*/) == 0);
     if(ch == '\n')
         uart_regw(UART_THR, '\r');
     uart_regw(UART_THR, ch);
@@ -210,7 +210,7 @@ void irq_handler(uint32_t sig, uint64_t irq)
 void init_server(void)
 {
     cap = create_capability(CAP_ENDPOINT, CRIGHT_RCV | CRIGHT_SND | CRIGHT_GRANT);
-    debug("TTY driver created cap %d\n", cap);
+    debug("TTY driver created cap 0x%lX\n", cap);
 
 //    struct dm_register tty;
  

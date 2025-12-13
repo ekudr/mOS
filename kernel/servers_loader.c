@@ -32,7 +32,7 @@ loadseg(pagetable_t pagetable, uint64_t va, uint64_t addr, uint64_t sz)
 
     s = va % PAGE_SIZE;
     printf(".");
-//    debug("EXEC read %d bytes to virt addr 0x%lX page shift %lX:\n", sz, va, s);
+//    debug("EXEC read 0x%X bytes to virt addr 0x%lX page shift %lX:\n", sz, va, s);
     if(s != 0) {
         pa = mmu_walk_addr(pagetable, va);
         if(pa == 0)
@@ -41,7 +41,7 @@ loadseg(pagetable_t pagetable, uint64_t va, uint64_t addr, uint64_t sz)
         d = PAGE_SIZE - s;
         d = (sz < d) ? sz : d; 
         printf(".");
-//        debug("    copy from 0x%lX to phis addr 0x%lX %d bytes\n", addr, pa, d); 
+//        debug("    copy from 0x%lX to phis addr 0x%lX 0x%X bytes\n", addr, pa, d); 
         memcpy((void *)PA2DA(pa), (void *)addr, d);
         addr += d;
         sz -= d;
@@ -57,7 +57,7 @@ loadseg(pagetable_t pagetable, uint64_t va, uint64_t addr, uint64_t sz)
         else
             n = PAGE_SIZE;
         printf(".");    
-//        debug("    copy from 0x%lX to phis addr 0x%lX %d bytes\n", addr+i, pa, n);    
+//        debug("    copy from 0x%lX to phis addr 0x%lX 0x%X bytes\n", addr+i, pa, n);    
         memcpy((void *)PA2DA(pa), (void *)(addr+i), n);
     }
 
@@ -89,8 +89,6 @@ int loader_execsvr(uint64_t addr)
         return -1;
     }    
 
-    t->mm->pagetable = t->pagetable;
-
     //Load the server sections
 
     elf = (elfhdr_t *)addr;
@@ -117,7 +115,7 @@ int loader_execsvr(uint64_t addr)
             continue;
         uint64_t sz1;
 
-        
+ //       uvm_alloc_vm(t, ph->vaddr, ph->memsz, VMEM_CODE, 0);
         if (uvm_alloc_mmreg(t, ph->vaddr, ph->memsz, MM_REG_MEM, flags2perm(ph->flags)) < 0)
             panic("[LOADER] ERROR ALOCATING MEM_REG");
         sz1 = ph->vaddr + ph->memsz;
@@ -146,7 +144,7 @@ int loader_execsvr(uint64_t addr)
 
     //    stackbase = sz - 1*PAGESIZE;
 */
-    t->sz = sz;
+ //   t->sz = sz;
 
     if (uvm_alloc_mmreg(t, 0, 2 * PAGE_SIZE, MM_REG_STACK, PTE_W) < 0)
             panic("[LOADER] ERROR ALOCATING MEM_REG_STACK");

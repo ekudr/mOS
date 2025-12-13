@@ -3,6 +3,7 @@
 #include <memory.h>
 #include <sched.h>
 #include <errno.h>
+#include <cap.h>
 
 /*
  * Allocate memory region in given task.
@@ -25,7 +26,7 @@ uvm_alloc_mmreg(task_t *task, uint64_t vaddr, uint64_t size, uint64_t type, int 
 
     t           = task;    
     mm          = t->mm;
-    pgtable     = mm->pagetable;
+    pgtable     = t->pagetable;
 
 //    debug("[UVM] Alloc mem reg task %d va 0x%lX size 0x%lX type 0x%lX\n",
 //            t->pid,vaddr, size, type);
@@ -81,7 +82,7 @@ uvm_alloc_mmreg(task_t *task, uint64_t vaddr, uint64_t size, uint64_t type, int 
 
     mreg = (mem_reg_t *)ko_init((kobject_t *)mreg, t, KO_FRAME);
 
-    if (cap_install(t, mreg, CAP_ENDPOINT, CRIGHT_MAP)< 0) {
+    if (cap_install(t, mreg, CAP_FRAME, CRIGHT_MAP)< 0) {
         mfree(mreg);
         panic("[UVM] can not allocate capability");
         return -ENOENT; 
@@ -175,7 +176,7 @@ uvm_alloc_vmem(task_t *task, uint64_t vaddr, size_t size)
 
     mreg = (mem_reg_t *)ko_init((kobject_t *)mreg, t, KO_FRAME);
 
-    if (cap_install(t, mreg, CAP_ENDPOINT, CRIGHT_MAP)< 0) {
+    if (cap_install(t, mreg, CAP_FRAME, CRIGHT_MAP)< 0) {
         mfree(mreg);
         panic("[UVM] can not allocate capability");
         return NULL; 
@@ -218,7 +219,7 @@ mem_reg_t *uvm_user_memmap(task_t *task, uint64_t addr, uint64_t size, uint64_t 
     size = PGROUNDUP(size); 
     
     mem_reg_t *mreg = uvm_alloc_vmem(task, addr, size);
-    pgtable = task->mm->pagetable;
+    pgtable = task->pagetable;
 
     if (flags & MAP_MEMIO) {
         mreg->status |= (MM_REG_MMIO | MM_REG_VALID);
@@ -240,3 +241,92 @@ mem_reg_t *uvm_user_memmap(task_t *task, uint64_t addr, uint64_t size, uint64_t 
 //        debug("\x1b[35mPMPCFG0:\x1b[0m 0x%lX\n", r_pmpcfg0());
     return mreg;
 }
+
+int uvm_init_mnode(task_t *t)
+{
+    uint64_t ppn = pgalloc();
+    if (!ppn) return -ENOMEM;
+    
+    vmem_block_t *mnode = (vmem_block_t *)PPN2DA(ppn);
+    memset(mnode, 0, PAGE_SIZE);
+
+    cap_insert(&t->caps[MEM_ROOT], mnode, CAP_MNODE, 0);
+
+
+    mnode[0].type = VMEM_UNTYPED;
+    mnode[0].start = 0x1000;
+    mnode[0].size = 0x1FFFFFFE;
+
+    return SUCCESS;
+}
+
+vmem_block_t *uvm_find_free_slot(task_t *t)
+{
+    if (!t) return NULL;
+
+    // cap root mem node
+    vmem_block_t *mnode = (vmem_block_t *)t->caps[MEM_ROOT].obj;
+
+
+// ??? FIXME add MNODE search and addind ne MNODES
+
+    for (int i = 0; i < MAX_MEM_SLOTS; i++) {
+        if (mnode[i].type == VMEM_NONE) {
+//            mnode[i].type = VMEM_UNTYPED;
+            return &mnode[i]; /* return slot pointer */
+        }
+    }
+    return NULL; /* table full */
+}
+
+int uvm_alloc_vm(task_t *task, uint64_t vaddr, size_t size, uint16_t type, int xperm)
+{
+//    debug("[UVM] Task %d allocate vaddr 0x%lX size 0x%lX\n", task->pid, vaddr, size);
+
+    vmem_block_t *mnode = (vmem_block_t *)task->caps[MEM_ROOT].obj;
+
+    // round to page size block
+    vaddr = PGROUNDDOWN(vaddr);
+    size  = PGROUNDUP(size); 
+
+    vmem_block_t *new;
+
+    // lock ??? FIXME
+
+    // if allocating vmem for code it shoud be from low addr to high
+
+    if (type == VMEM_CODE) {
+        // check if we have untyped mem
+        if (mnode[0].type != VMEM_UNTYPED) panic("wrong mnode schema");
+
+        // check if vaddr is in UNYTPED block
+        if (mnode[0].start > vaddr) panic("vmem already allocated");
+
+        // check if mem is available
+        if ((size >> PAGE_SHIFT) > (mnode[0].size - ((vaddr - mnode[0].start) >> PAGE_SHIFT))) 
+                panic("vmem no mem");
+
+ //       debug("[UVM] Task %d UNTYPED start 0x%lX size 0x%lX\n", task->pid, mnode[0].start, mnode[0].size);
+
+        uint32_t blks = ((vaddr - mnode[0].start) + size) >> PAGE_SHIFT;
+ //       debug("[UVM] blocks shrinked 0x%lX\n", blks);
+        mnode[0].size = mnode[0].size - blks;
+        mnode[0].start = vaddr + size;      
+ //       debug("[UVM] Task %d UNTYPED start 0x%lX size 0x%lX\n", task->pid, mnode[0].start, mnode[0].size);
+
+        new = uvm_find_free_slot(task);
+
+        new->start = vaddr;
+        new->size  = size >> PAGE_SHIFT;
+        new->type  = VMEM_CODE;
+//        debug("[UVM] Task %d new block 0x%lX start 0x%lX size 0x%lX\n", task->pid, 
+ //               new , new->start, new->size);
+
+    }
+    // unlock ??? FIXME
+
+
+    return 0;
+}
+
+

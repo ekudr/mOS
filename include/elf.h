@@ -48,4 +48,22 @@ typedef struct proghdr proghdr_t;
 #define ELF_PROG_FLAG_WRITE     2
 #define ELF_PROG_FLAG_READ      4
 
+
+inline proghdr_t *__elf_get_phtable(const char *file)
+{
+    return (void *)file + ((elfhdr_t *)file)->phoff;
+}
+
+inline uint64_t __elf_get_entry(const char *file)
+{
+    return ((elfhdr_t *)file)->entry;
+}
+
+inline uint16_t __elf_get_phnum(const char *file)
+{
+    return ((elfhdr_t *)file)->phnum;
+}
+
+
+
 #endif  /* __ELF_H__ */

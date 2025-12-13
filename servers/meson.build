@@ -58,6 +58,28 @@ tty_elf = executable(
 
 )
 
+console_elf = executable(
+    'console',
+    sources : ['console/main.c', 'console/text_render.c',],
+    objects : ['console/font.o'],
+    include_directories: [include_libc, include_board, include_libsys, ],
+    c_args: c_args,
+    link_args: [linker_args],
+    link_with: [libsys_a, libc_a, ],
+    link_depends: [libsys_a, libc_a, ],
+
+)
+
+wm_elf = executable(
+    'wm',
+    sources : ['wm/main.c', 'wm/window.c', 'wm/draw.c', ],
+    include_directories: [include_libc, include_board, include_libsys, ],
+    c_args: c_args,
+    link_args: [linker_args],
+    link_with: [libsys_a, libc_a, ],
+    link_depends: [libsys_a, libc_a, ],
+)
+
 mmc_sources = [
     'mmc_drv/main.c', 
     'mmc_drv/mmc.c',
@@ -85,8 +107,18 @@ mmc_drv_elf = executable(
 
 )
 
+asd_elf = executable(
+    'asd',
+    sources : ['asd.c'],
+    include_directories: [include_libc, include_board, include_libsys, ],
+    c_args: c_args,
+    link_args: [linker_args],
+    link_with: [libsys_a, libc_a, ],
+    link_depends: [libsys_a, libc_a, ],
+)
+
 servers_img = custom_target('image',
-    input: [nameserver_elf, vfs_elf, devman_elf, tty_elf, one_elf, mmc_drv_elf],
+    input: [nameserver_elf, vfs_elf, devman_elf, tty_elf, one_elf, mmc_drv_elf, wm_elf, console_elf],
     output: 'servers.img',
     command: [py3, meson.project_source_root() +'/tools/build_img.py', '@INPUT@', '-o', '@OUTPUT@'],
     depends: [devman_elf, one_elf],

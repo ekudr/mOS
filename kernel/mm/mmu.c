@@ -3,6 +3,7 @@
 #include <memory.h>
 #include <sched.h>
 #include <spinlock.h>
+#include <riscv.h>
 
 spinlock_t mmu_lock __ALIGN(16);
 
@@ -144,6 +145,28 @@ mmu_memmap(pagetable_t pgtable, uint64_t vaddr, uint64_t size, int perm)
         }
     }
 
+    return SUCCESS;
+}
+
+int mmu_move_pages(pagetable_t from, pagetable_t to, uint64_t va_src, 
+                    uint64_t va_dst, uint64_t len, int perm)
+{
+//    debug("\x1b[31m[MMU]\x1b[0m move pages from pt 0x%lX to 0x%lX 0x%lX => 0x%lX %d blocks\n", 
+//            from, to, va_src, va_dst, len);
+
+    for (int i = 0; i < len; i++, va_src += PAGE_SIZE, va_dst += PAGE_SIZE)
+    {
+        pte_t *pte = mmu_walk(from, va_src, 0);
+        if (pte == NULL || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0) 
+                return -EINVAL;
+
+        mmu_map_pages(to, va_dst, PAGE_SIZE, PTE2PA((uint64_t)*pte), perm);
+        *pte = 0;
+
+    //    mmu_invalidate_tlbs();
+        
+    }
+//    sbi_remote_sfence_vma(va_dst, len << PAGE_SHIFT);
     return SUCCESS;
 }
 
@@ -465,4 +488,15 @@ void mmu_free_pagetable(pagetable_t pagetable)
 void mmu_init(void)
 {
     initlock(&mmu_lock, "mmu");
+}
+
+void mmu_pt_dump(pagetable_t pt)
+{
+    uint64_t pa0 = mmu_walk_addr(pt, 0x11000);
+    char *va = (char *)PA2DA(pa0);
+    for (size_t i = 0x0; i < 0x100; i++)
+    {
+        debug("0x%x ", va[i]);
+    }
+    
 }

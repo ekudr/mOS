@@ -7,13 +7,16 @@
 #define CRIGHT_IRQ  (1U << 3)
 #define CRIGHT_GRANT  (1U << 4)
 
-#define CAP_SELF 0
-#define CAP_NS   1
 
 typedef enum {
     CAP_NONE = 0,
+    CAP_NULL_CAP,
+    CAP_UNTYPED,
+    CAP_CNODE,
+    CAP_MNODE,
     CAP_ENDPOINT,
     CAP_REPLAY,
+    CAP_TASK,
     CAP_FRAME,
     CAP_SHMEMORY,
     CAP_IRQ,

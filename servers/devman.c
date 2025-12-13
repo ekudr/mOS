@@ -141,7 +141,7 @@ int main()
         
 //        debug("Message received from %d type %d\n", msg.sender, msg.type);
         uint32_t type =msg->type;
-        uint64_t sender = msg->sender;
+//        uint64_t sender = msg->sender;
         msg->u.dm_register.driver_cap = ipc_get_cap(0);
 
         switch (type)
@@ -161,17 +161,20 @@ int main()
             const struct dm_lookup *l = &msg->u.dm_lookup;
             cap_id_t drv = dm_do_lookup(l->name);
             memset(msg, 0, sizeof(dm_msg_t));
-            if (drv == -EINVAL)
+            if (drv == -EINVAL){
                 msg->u.dm_reply.err = -1;
-            else {
+                info = msginfo_word_new(0,sizeof(dm_msg_t)/8, 0, 0);
+            } else {
                 msg->u.dm_reply.err = 0;
-                int g_drv = cap_grant(drv, sender, -1 , CRIGHT_SND);
-                if (g_drv < 0) msg->u.dm_reply.err = g_drv;            
-                msg->u.dm_reply.driver_cap = g_drv;
+                // int g_drv = cap_grant(drv, sender, -1 , CRIGHT_SND);
+                // if (g_drv < 0) msg->u.dm_reply.err = g_drv;   
+                ipc_set_cap(0, drv);
+                msg->u.dm_reply.driver_cap = drv;
+                info = msginfo_word_new(0,sizeof(dm_msg_t)/8, 1, 0);
             }
             
             msg->type = type;
-            info = msginfo_word_new(0,sizeof(dm_msg_t)/8, 0, 0);
+            
             ipc_reply(info);
 
         default:

@@ -127,13 +127,15 @@ syscall_argaddr(int n, uint64_t *ip)
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
 static uint64_t (*syscalls[])(void) = {
-    [SYS_fork]      =  sys_fork,
+    [SYS_yield]     = __sys_yield,
+//    [SYS_fork]      =  sys_fork,
     [SYS_exit]      =  sys_exit,
-    [SYS_exec]      =  sys_exec,
+//    [SYS_exec]      =  sys_exec,
     [SYS_getpid]    =  sys_getpid,
     [SYS_debug]     =  sys_debug,
     [SYS_mmap]      =  sys_mmap,
-    [SYS_sbrk]      =  sys_sbrk,
+    [SYS_cache_flush] = __sys_cache_flush,
+//    [SYS_sbrk]      =  sys_sbrk,
     [SYS_recv]      =  __sys_recv,
     [SYS_nb_recv]   =  __sys_nb_recv,
     [SYS_send]      =  __sys_send,
@@ -151,12 +153,13 @@ static uint64_t (*syscalls[])(void) = {
     // [SYS_ipc_call]   = sys_ipc_cll,
     // [SYS_endpt_crt] = sys_endpt_creat,
     [SYS_cap_grant] = sys_cap_grnt,
-    [SYS_cap_transfer] = __sys_cap_transfer,
+//    [SYS_cap_transfer] = __sys_cap_transfer,
     [SYS_cap_crt]   = sys_cap_create,
     [SYS_shmem_crt] = __sys_shmem_create,
     [SYS_shmem_att] = __sys_shmem_attach,
 //    [SYS_fast_call] = sys_fast_call,
     [SYS_cap_free]  = __sys_cap_free,
+    [SYS_task_ctrl] = __sys_task_control,
 
 };
 
@@ -177,7 +180,7 @@ syscall(void)
         t->trapframe->a0 = syscalls[num]();
 //        debug("[SYSCALL] return a0 = 0x%lX into task\n", t->trapframe->a0);
       } else {
-        printf("%d %s: unknown sys call %d\n",
+        printf("task %d %s: unknown sys call %d\n",
                 t->pid, t->name, num);
         t->trapframe->a0 = -1;
       }

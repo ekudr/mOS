@@ -2,6 +2,7 @@
     "files.associations": {
         "mmio.h": "c",
         "block_dev.h": "c",
-        "ipc.h": "c"
+        "ipc.h": "c",
+        "nameserver.h": "c"
     }
 }

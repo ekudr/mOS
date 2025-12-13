@@ -1,8 +1,7 @@
 #include <stdint.h>
 #include <mosstd.h>
 #include <string.h>
-#include <errno.h>
-
+#include <sched.h>
 #include <devman.h>
 
 
@@ -14,11 +13,13 @@ int dm_cap = 0;
 static int get_dm_cap()
 {
     if (!dm_cap) {
-        do {
-          dm_cap = ns_lookup_cap("devman");  
-        } while (dm_cap <= 0);        
+        while(1) {
+            dm_cap = ns_lookup_cap("devman"); 
+            if (dm_cap > 0) break;
+            sched_yield();  
+        }        
     } 
-
+    
     return dm_cap;
 }
 
@@ -80,5 +81,5 @@ kerrno_t devman_lookup(const char *name)
     }    
 
     if (msg->u.dm_reply.err < 0) return -EINVAL;        
-    return msg->u.dm_reply.driver_cap;
+    return ipc_get_cap(0);
 }

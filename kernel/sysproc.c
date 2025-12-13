@@ -18,6 +18,11 @@ inline void __sys_error_return(task_t *t, int err)
     syscall_set_MR(t, 1, info);
 }
 
+uint64_t __sys_yield(void)
+{
+    sched_task_yield();
+}
+
 uint64_t sys_fork(void)
 {
     return 0;
@@ -100,6 +105,16 @@ uint64_t sys_sbrk(void)
     return addr;
 }
 
+void flush_dcache_range(unsigned long start, unsigned long end);
+
+uint64_t __sys_cache_flush(void)
+{
+    uint64_t addr = syscall_argraw(0);
+    uint64_t size = syscall_argraw(1);
+    flush_dcache_range(addr, addr + size);
+
+    return 0;
+}
 
 uint64_t sys_irq_set(void)
 {
@@ -162,14 +177,14 @@ uint64_t sys_cap_grnt(void)
     return sys_cap_grant((int)from_id, to_pid, (int)to_slot, (uint32_t)req_rights);
 }
 
-uint64_t __sys_cap_transfer(void)
-{
-    uint64_t dest_cap, src_cap, req_rights;
-    src_cap     = syscall_argraw(0);
-    dest_cap      = syscall_argraw(1);
-    req_rights  = syscall_argraw(2); 
-    return sys_cap_transfer(src_cap, dest_cap, req_rights);
-}
+// uint64_t __sys_cap_transfer(void)
+// {
+//     uint64_t dest_cap, src_cap, req_rights;
+//     src_cap     = syscall_argraw(0);
+//     dest_cap      = syscall_argraw(1);
+//     req_rights  = syscall_argraw(2); 
+//     return sys_cap_transfer(src_cap, dest_cap, req_rights);
+// }
 
 uint64_t sys_cap_create(void)
 {
@@ -334,4 +349,12 @@ uint64_t __sys_reply(void)
     if (err < 0) __sys_error_return(t, err);
 
     return t->trapframe->a0;
+}
+
+uint64_t __sys_task_control(void)
+{
+    int err;
+    err = sched_task_control(mytask());
+
+    return err;
 }

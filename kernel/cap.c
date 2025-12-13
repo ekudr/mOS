@@ -6,58 +6,126 @@
 #include <object.h>
 #include <shmem.h>
 #include <sysproc.h>
+#include <memory.h>
 
 
-// void *create_cnode(void)
-// {
-//     void *cnode;
-//     uint64_t ppn = pgalloc();
-//     if (!ppn) return NULL;
 
-//     cnode = (void *)PPN2DA(ppn);
-//     memset(cnode, 0, PAGE_SIZE);
-
-//     return cnode;
-// }
-
-int cap_install(struct task *t, void *obj, cap_type_t type, uint32_t rights)
+int cap_init_cnode(task_t *t)
 {
-    if (!t) return -EINVAL;
-    acquire(&t->cap_lock);
-    for (int i = 0; i < MAX_CAPS; i++) {
-        if (t->caps[i].type == CAP_NONE) {
-///            t->caps[i].valid = true; 
-            t->caps[i].type = type;
-            t->caps[i].obj = ko_get((kobject_t *)obj);
-            t->caps[i].rights = rights;
-//            debug("[CAP] created task %d cap id %d type %d rights %d\n", t->pid, i, t->caps[i].type, t->caps[i].rights);
-            release(&t->cap_lock);
-            return i; /* return cap id */
-        }
+    cap_node_t *cnode = cap_create_node(t);
+
+    if (!cnode) return -ENOMEM;
+    cap_insert(&t->caps[0], cnode, CAP_CNODE, 0);
+    cap_insert(&cnode->caps[0], 0, CAP_NULL_CAP, 0);
+
+    return SUCCESS;
+}
+
+cap_node_t *cap_create_node(task_t *t)
+{
+    cap_node_t *cnode;
+    uint64_t ppn = pgalloc();
+    if (!ppn) return NULL;
+
+    cnode = (cap_node_t *)PPN2DA(ppn);
+    memset(cnode, 0, PAGE_SIZE);
+
+    cnode = (cap_node_t *)ko_init((kobject_t *)cnode, t, KO_CNODE);
+
+    return cnode;
+}
+
+static cap_entry_t *__cap_lookup(task_t *t, int cap_id)
+{
+    int root = get_cap_root(cap_id);
+    if (root > MAX_CAPS) return NULL;
+
+    cap_entry_t *ce = &t->caps[root];
+    if (unlikely(ce->type != CAP_CNODE)) return NULL;
+
+    int idx = (cap_id >> 8) & 0xFF;
+    if (idx > MAX_CAPS) return NULL;
+
+    cap_node_t *cnode = (cap_node_t *)ce->obj;
+    ce = &cnode->caps[idx];
+
+    if (ce->type == CAP_CNODE) {
+        idx = cap_id & 0xFF;
+        if (idx > MAX_CAPS) return NULL;
+
+        cap_node_t *cnode = (cap_node_t *)ce->obj;
+        ce = &cnode->caps[idx];
     }
-    release(&t->cap_lock);
-    return -ENOSPC; /* table full */
+
+    return ce;
 }
 
 cap_entry_t *cap_lookup(task_t *t, int cap_id)
 {
-    if (!t || cap_id < 0 || cap_id >= MAX_CAPS)
-        return NULL;
-
-    acquire(&t->cap_lock);        
-    if (t->caps[cap_id].type == CAP_NONE){
-        release(&t->cap_lock);
-        return NULL;
-    }
-    cap_entry_t *e = &t->caps[cap_id];
+    acquire(&t->cap_lock);
+    cap_entry_t *ce = __cap_lookup(t, cap_id);
     release(&t->cap_lock);
-
-    return e;
+    return ce;
 }
 
-void cap_destroy(kobject_t *ko)
+int cap_find_free_cap(task_t *t)
 {
-    if (ko->type == KO_SHMEM) {
+    if (!t) return -EINVAL;
+
+    // cap root node
+    cap_node_t *cnode = (cap_node_t *)t->caps[0].obj;
+
+
+// ??? FIXME add CNODE search and addind ne CNODES
+
+    for (int i = 0; i < MAX_CAPS; i++) {
+        if (cnode->caps[i].type == CAP_NONE) {
+            cnode->caps[i].type = CAP_UNTYPED;
+            return i << 8; /* return cap id */
+        }
+    }
+    return -ENOSPC; /* table full */
+}
+
+int cap_install(struct task *t, void *obj, cap_type_t type, uint32_t rights)
+{
+    if (!t || !obj || !type) return -EINVAL;
+    acquire(&t->cap_lock);
+    int cap_id = cap_find_free_cap(t);
+    release(&t->cap_lock);
+    if (cap_id < 0) return cap_id;
+
+    cap_entry_t *ce = cap_lookup(t, cap_id);
+    if (!ce) return -ENOSPC; // ??? need right err no
+
+    cap_insert(ce, obj, type, rights);
+
+
+    return cap_id;
+}
+
+int _cap_install(struct task *t, cap_entry_t *parent, void *obj, cap_type_t type, uint32_t rights)
+{
+    if (!t || !obj || !type) return -EINVAL;
+
+    acquire(&t->cap_lock);
+    int cap_id = cap_find_free_cap(t);
+    release(&t->cap_lock);
+    
+    if (cap_id < 0) return cap_id;
+
+    cap_entry_t *ce = cap_lookup(t, cap_id);
+    if (!ce) return -ENOSPC; // ??? need right err no
+
+    cap_insert(ce, obj, type, rights);
+
+
+    return cap_id;
+}
+
+void cap_destroy(kobject_t *ko, uint32_t type)
+{
+    if (type == CAP_SHMEMORY) {
 //        debug("[CAP] free shared memory 0x%lX\n", ko);
         shmem_free_memory((shmem_block_t *)ko);
     } else {
@@ -67,36 +135,28 @@ void cap_destroy(kobject_t *ko)
 
 void cap_free(task_t *t, int cap_id)
 {    
-    if (!t || cap_id < 0 || cap_id >= MAX_CAPS) return; 
+    if (!t) return; 
+
+    cap_entry_t *ce = cap_lookup(t, cap_id);
+    if (!ce) return;
+
     acquire(&t->cap_lock);        
     
-    if (t->caps[cap_id].type == CAP_NONE){
+    if (ce->type == CAP_NONE){
         release(&t->cap_lock);
         return;
     }    
-    
-    kobject_t *obj = (kobject_t *)t->caps[cap_id].obj;
-    t->caps[cap_id].obj = NULL;    
-///    t->caps[id].valid = false;
-    t->caps[cap_id].type = CAP_NONE;        
-    t->caps[cap_id].rights = 0;
+    uint32_t type  = ce->type;
+    kobject_t *obj = (kobject_t *)ce->obj;
+    ce->obj        = NULL;    
+    ce->type       = CAP_NONE;        
+    ce->rights     = 0;
     release(&t->cap_lock);
 //    debug("[CAP] free kernel object refcount %d\n", obj->refcount);
-    if (obj) ko_put(obj, cap_destroy);
+
+    if (obj) ko_put(obj, type, cap_destroy);
 }
 
-task_t *cap_to_task(task_t *task, int cap_id)
-{
-    if (!task || cap_id < 0 || cap_id >= MAX_CAPS) return NULL; 
-
-    cap_entry_t *ce = cap_lookup(task, cap_id);
-    if (!ce) return NULL;
-
-    kobject_t *ko = ce->obj;
-    if (!ko) return NULL;
-
-    return ko->owner;
-}
 
 /*
  * Create transient reply cap i server's cap tabble.
@@ -113,7 +173,7 @@ int cap_replay_install(task_t *server, task_t *client)
 
     int cap_id = cap_install(server, r, CAP_REPLAY, CRIGHT_SND);
     if (cap_id < 0) {
-        ko_put((kobject_t *)r, NULL);
+        ko_put((kobject_t *)r, CAP_REPLAY, NULL);
         return -ENOSPC;
     }
     return cap_id;
@@ -129,10 +189,10 @@ int sys_endpoint_create(task_t *t)
     if (ep == NULL) return -ENOMEM;    
 
     ep = (endpoint_t *)ko_init((kobject_t *)ep, t, KO_ENDPOINT);
-//    initlock(&ep->lock, "endpoint");
+    initlock(&ep->lock, "endpoint");
 //    list_init(&ep->msglist);
     list_init(&ep->queue);
-//    ep->owner = t;
+    ep->owner = t;
     ep->count = 0;
     ep->state = EP_STATE_IDLE;
 
@@ -141,28 +201,6 @@ int sys_endpoint_create(task_t *t)
         mfree(ep);
     return ret;
 }
-
-/*
- * Syscall create fastcall capability
- */
-
-// int fastcall_create(task_t *t, uint32_t rights)
-// {
-//     fastcall_t *fc = malloc(sizeof(fastcall_t));
-//     if (fc == NULL) return -ENOMEM;
-
-//     fc = (fastcall_t *)ko_init((kobject_t *)fc, t, KO_FASTCALL);
-//     initlock(&fc->lock, "fastcall");
-//     list_init(&fc->tlist);
-//     fc->owner = t;
-
-//     fc->count = 0;
-//     int ret = cap_install(t, fc, CAP_FASTCALL, rights);
-//     if (ret < 0)
-//         mfree(fc);
-
-//     return ret;
-// } 
 
 /*
  * Create shared memory capability
@@ -201,6 +239,84 @@ int sys_cap_shmem_create(task_t *t)
     return ret;
 }
 
+int cap_task_create(task *t)
+{
+    int ret;
+    task_t *new = sched_taskalloc();
+    if (!new) return -ENOMEM;
+
+    acquire(&new->lock);
+    // An empty user page table.
+    new->pagetable = sched_task_pagetable(new);
+
+    if (new->pagetable == 0)
+    {
+        sched_taskfree(new);
+        return -ENOMEM;
+    }   
+
+
+    if (uvm_alloc_mmreg(new, 0, 2 * PAGE_SIZE, MM_REG_STACK, PTE_W) < 0)
+            panic("[LOADER] ERROR ALOCATING MEM_REG_STACK");
+    new->trapframe->sp = new->mm->start_stack;   // initial stack pointer
+
+    /// ??? rewrite memory mapping for allocated buf
+    mem_reg_t * mreg = uvm_user_memmap(new, 0, PAGE_SIZE, MAP_MEMIO | MAP_READ | MAP_WRITE, DA2PA(t->ipc_buf));
+
+    new->trapframe->a0 = mreg->addr;
+
+    ret = cap_install(t, new, CAP_TASK, 0);
+    if (ret < 0) {
+        sched_taskfree(new);
+    }
+
+    release(&new->lock);
+
+    return ret;
+}
+
+int cap_frame_create(task *t)
+{
+    int ret;
+
+    uint32_t rights = syscall_get_MR(t, msgRegisters[1]);
+    size_t size     = syscall_get_MR(t, msgRegisters[2]);
+    uint64_t vaddr  = syscall_get_MR(t, msgRegisters[3]);
+
+    if (!vaddr || !size) return -EINVAL;
+
+    size  = PGROUNDUP(size);
+    vaddr = PGROUNDDOWN(vaddr);
+    
+
+    // lock
+    vmem_block_t *slot = uvm_find_free_slot(t);
+
+    if (!slot) {
+        //unlock
+        return -ENOSPC;
+    }
+
+    ret = mmu_memmap(t->pagetable, vaddr, size, PTE_R | PTE_U | PTE_W);
+    if (ret < 0) {
+        // free slot
+        return ret;
+    }   
+
+    slot->start = vaddr;
+    slot->size = size >> PAGE_SHIFT;
+    slot->type = VMEM_MEM;
+
+    //unlock
+    ret = cap_install(t, slot, CAP_FRAME, rights);
+    if (ret < 0) {
+        // free vmem slot 
+        ;
+    }
+    
+    return ret;
+}    
+
 int sys_capability_create(task_t *t)
 {
     int ret;
@@ -217,11 +333,15 @@ int sys_capability_create(task_t *t)
         case CAP_SHMEMORY:           
             ret = sys_cap_shmem_create(t);
             break;
-/*        
-        case CAP_REPLAY:
-            ret = replay_create(t, rights);
+        
+        case CAP_TASK:
+            ret = cap_task_create(t);
             break;
-*/      
+
+        case CAP_FRAME:
+            ret = cap_frame_create(t);
+            break;
+
         default:
             ret = -EINVAL;
             break;
@@ -247,13 +367,14 @@ int cap_grant_into(task_t *from, int from_cap_id,
     void *obj;
     int new_cap = -EINVAL;
     int i;
-//    debug("[CAP] granting from task %d id %d to task %d id %d rights %d\n",
-//            from->pid, from_cap_id, to->pid, to_slot, req_rights);
+    // debug("[CAP] granting from task %d id %d to task %d id %d rights %d\n",
+    //         from->pid, from_cap_id, to->pid, to_slot, req_rights);
     if (!from || !to) 
         return -ENOENT;
-    
+
     // Lookup 'from' capability
     from_ce = cap_lookup(from, from_cap_id);
+   
     if (!from_ce || (from_ce->type == CAP_NONE)) 
         return -EINVAL;
 
@@ -288,39 +409,36 @@ int cap_grant_into(task_t *from, int from_cap_id,
     }
     // If to_slot requested, verify free; else find free slot
 
-    if (to_slot >= 0) {
-        if (to_slot >= MAX_CAPS) {
+    if (to_slot > 0) {
+
+        to_ce = __cap_lookup(to, to_slot);  
+//    debug("\x1b[31m[CAP]\x1b[0m to ce 0x%lX type %d\n", to_ce, to_ce->type);              
+        if (!to_ce) {
             new_cap = -EINVAL;
             goto out_unlock;
         }
-        to_ce = &to->caps[to_slot];
-        if (to_ce->type) {
+
+        if (to_ce->type != CAP_UNTYPED || to_ce->type != CAP_NONE) {
             new_cap = -EEXIST;
         goto out_unlock;
     }
     i = to_slot;
     } else {
         // find free slot
-        i = -1;
-        for (int j = 0; j < MAX_CAPS; j++) {
-            if (to->caps[j].type == CAP_NONE) { 
-                i = j; 
-                break; 
-            }
-        }
-
-        if (i == -1) { 
+             
+        i = cap_find_free_cap(to);
+// debug("\x1b[31m[CAP]\x1b[0m found free 0x%lX\n", i);
+        if (i < 0) { 
             new_cap = -ENOSPC; 
             goto out_unlock; 
         }
-        to_ce = &to->caps[i];
+//        debug("\x1b[31m[CAP]\x1b[0m to 0x%lX 0x%lX\n", to, i);
+        to_ce = __cap_lookup(to, i);
+//        debug("\x1b[31m[CAP]\x1b[0m to_ce 0x%lX\n", to_ce);
     }
 
     // Install capability into recipient's cap table 
-    to_ce->type = from_ce->type;
-    to_ce->obj = ko_get(obj);
-    to_ce->rights = req_rights;
-
+    cap_insert(to_ce, obj, from_ce->type, req_rights);
     
     new_cap = i;
 
@@ -339,6 +457,7 @@ out_unlock:
             release(&from->cap_lock);
         }
     }
+
     return new_cap;
 }
 
@@ -348,19 +467,19 @@ long sys_cap_grant(int from_id, uint64_t to_pid, int to_slot, uint32_t req_right
     task_t *from = mytask();
     task_t *to = sched_find_task(to_pid);
     if (!to) return -ENOENT;
-    
+//    debug("[CAP] transfer cap from %d 0x%lX to %d 0x%lX\n", from->pid, from_id, to_pid, to_slot);
     return cap_grant_into(from, from_id, to, to_slot,req_rights);
 }
 
 /*
  * Transfer capability from task to task by known cap id.
  */
-int sys_cap_transfer(int src_cap, int dest_cap, uint32_t req_rights)
-{
-//    debug("[CAP] transfer cap %d to %d\n", src_cap, dest_cap);
-    task_t *src_task = mytask();
-    task_t *dest_task = cap_to_task(src_task, dest_cap);
-//    debug("[CAP] transfer from task %d to %d\n", src_task->pid, dest_task->pid);
-    if (!dest_task || src_task == dest_task) return -EINVAL;
-    return cap_grant_into(src_task, src_cap, dest_task, -1,req_rights);
-}
+// int sys_cap_transfer(int src_cap, int dest_cap, uint32_t req_rights)
+// {
+// //    debug("[CAP] transfer cap %d to %d\n", src_cap, dest_cap);
+//     task_t *src_task = mytask();
+//     task_t *dest_task = cap_to_task(src_task, dest_cap);
+// //    debug("[CAP] transfer from task %d to %d\n", src_task->pid, dest_task->pid);
+//     if (!dest_task || src_task == dest_task) return -EINVAL;
+//     return cap_grant_into(src_task, src_cap, dest_task, -1,req_rights);
+// }

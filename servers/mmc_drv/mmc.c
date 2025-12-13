@@ -1310,7 +1310,7 @@ int mmc_init()
 	else
 		sd_mmc.card->has_init = 1;
 
-    debug("[MMC] %s.%d MMC init err %d\n", __func__,__LINE__, err);
+//    debug("[MMC] %s.%d MMC init err %d\n", __func__,__LINE__, err);
 	// mmc->bread = mmc_bread;
 
     return err;

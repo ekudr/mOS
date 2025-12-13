@@ -23,7 +23,7 @@ struct vfs_msg
     int          ret;
     inode_type_t inode_type;
     char         path[256];
-    int          cap_id;
+//    int          cap_id;
 };
 
 

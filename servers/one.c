@@ -16,10 +16,21 @@
 #include <devman.h>
 #include <tty.h>
 
-
+#include <cap.h>
 #include <block_dev.h>
 #include <ext4.h>
 
+
+int elf_check_magic(const char *file);
+void elf_dump(const char *file);
+uint64_t elf_get_entry(const char *file);
+uint16_t elf_get_phnum(const char *file);
+uint32_t elf_get_ph_type(const char *file, size_t ph);
+uint64_t elf_get_ph_paddr(const char *file, size_t ph);
+uint64_t elf_get_ph_vaddr(const char *file, size_t ph);
+uint64_t elf_get_ph_mem_size(const char *file, size_t ph);
+uint64_t elf_get_ph_flags(const char *file, size_t ph);
+int elf_load_segment(const char *file, size_t ph, void *buf);
 
 block_dev_t disk;
 
@@ -109,9 +120,41 @@ int main()
 
     ext4fs_mount(&disk);
     ext4fs_ls(&disk, ".");
-    ext4fs_size(&disk, "bianbu.bmp", &fsize);
+    ext4fs_size(&disk, "asd", &fsize);
   
-    debug("Size of file is %d\n",fsize);
+    uint64_t len_read;
+    char *bmp = (char *)malloc(fsize);
+    err = ext4_read_file(&disk, "asd", bmp, 0, fsize, &len_read);
+    cons_out("[ONE] ext4 read %d bytes ret %d\n", len_read, err);
+    
+    if (elf_check_magic(bmp) < 0) panic("wrong magic");
+    elf_dump(bmp);
 
+    // create task cap
+    int new_task = create_capability(CAP_TASK, 0);
+    cons_out("[ONE] task cap created 0x%lX\n", new_task);
+
+    int mem_cap;
+//        char *nn = (char *)0x10000000;
+//    task_mem_alloc(new_task, vaddr, size, buf, flags);
+    for (int i = 0; i < elf_get_phnum(bmp); i++) {
+        if (elf_get_ph_type(bmp, i) != 1)
+            continue;
+        mem_cap = cap_frame_create((void *)0x10000000, elf_get_ph_mem_size(bmp, i), CRIGHT_MAP);
+        memset((void *)0x10000000, 0, PGROUNDUP(elf_get_ph_mem_size(bmp, i)));
+ //       debug("[ONE] mem cap id 0x%X\n", mem_cap);
+        elf_load_segment(bmp, i, (void *)0x10000000);
+ //       move pages to new task
+//        debug("\n");
+        //  for (int j = 0x1000; j < 0x1100; j++) {
+        //      debug("0x%X ", nn[j]);
+        //  }
+
+        cap_task_mem_move(new_task, (void *)elf_get_ph_vaddr(bmp, i), mem_cap, elf_get_ph_flags(bmp, i));
+    }
+
+    cap_task_run(new_task, elf_get_entry(bmp));
+ //   debug("[ONE] entry point 0x%X\n", elf_get_entry(bmp));
+    cons_out("[ONE] END OF TASK\n");
     for(;;);
 }

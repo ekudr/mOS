@@ -68,7 +68,7 @@ void init_mmc()
     int err;
     mmc_init_host();
     err = mmc_init();
-    debug("[MMC] mmc_init returned %d\n", err);
+//    debug("[MMC] mmc_init returned %d\n", err);
     if (err<0){
         panic("[SDMMC] MMC Init err");
     }

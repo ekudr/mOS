@@ -9,6 +9,9 @@
 #define UART0_DIV 0x08
 #define UART_INIT_IER 0x40
 
+#define FB_BASE 0x7f700000
+#define FB_SIZE	0x900000
+
 /*
  * PLIC Configuration
  */

@@ -5,6 +5,7 @@
 #include <trap.h>
 #include <khash.h>
 #include <cap.h>
+#include <sysproc.h>
 
 struct cpu cpus[NCPUS];
 
@@ -35,7 +36,7 @@ void sched_init(void)
     if (task_table == NULL)
         panic("[SCHED] can not create hash table");
 
-//    debug("[SCHED] task state mask 0x%lX do call bit 0x%lX\n", TASK_STATE_MASK, TASK_STATE_DOCALL);
+//    debug("[SCHED] size of cap %d\n", sizeof(cap_entry_t));
 }
 
 /*
@@ -363,7 +364,7 @@ void scheduler(void)
     {
         // Avoid deadlock by ensuring that devices can interrupt.
         intr_on();
-//        sfence_vma();
+        sfence_vma();
 //                debug("%d ", current_cpu->hartid);
         list_for_each(pos, &gp_tm->tasklist)
         {
@@ -373,6 +374,11 @@ void scheduler(void)
             acquire(&t->lock);
             if (get_task_state(t) == RUNNABLE)
             {
+ //               debug("%d", t->pid);
+//                 if (t->pid == 8) {
+//                     debug(" %d ", current_cpu->hartid);
+//  //                  panic(" task 7");
+//                }
                 // Switch to chosen process.  It is the process's job
                 // to release its lock and then reacquire it
                 // before jumping back to us.
@@ -454,7 +460,8 @@ int sched_taskfree(task_t *t)
     if (t->trapframe)
         pgfree(DA2PPN(t->trapframe));
     if (t->pagetable)
-        sched_task_freepagetable(t->pagetable, t->sz);
+        mmu_free_pagetable(t->pagetable);
+//        sched_task_freepagetable(t->pagetable, t->sz);
     if (t->kstack)
         kstack_free(t->kstack);
     mfree(t);
@@ -515,7 +522,14 @@ sched_taskalloc(void)
         return NULL;
     }
     t->trapframe = (trapframe_t *)PPN2DA(ppn);
+    memset(t->trapframe, 0, PAGE_SIZE);
 
+//    cap_insert(&t->caps[0], cap_create_node(t), CAP_CNODE, 0);
+    int err = cap_init_cnode(t);
+    if (err < 0) panic("init cnode");
+
+    err = uvm_init_mnode(t);
+    if (err < 0) panic("init mnode");
 
     // Allocate IPC buffer
     ppn = pgalloc();
@@ -526,36 +540,30 @@ sched_taskalloc(void)
     t->ipc_buf = (void *)PPN2DA(ppn);
     memset(t->ipc_buf, 0, PAGE_SIZE);
 
-    // Create task's own endpoint as cap 0
-    endpoint_t *ep = malloc(sizeof(endpoint_t));
-    if (ep == NULL)
-        panic("cannot create endpoint");
-    
-    ep = (endpoint_t *)ko_init((kobject_t *)ep, t, KO_ENDPOINT);
-//    initlock(&ep->lock, "endpoint");
-    ep->count = 0;
-//    list_init(&ep->msglist);
-    list_init(&ep->queue);
+    int ns_cap;
+    if (unlikely(t->pid == 1)) {
+        // Create 1 task's endpoint for ns
+        endpoint_t *ep = malloc(sizeof(endpoint_t));
+        if (ep == NULL)
+            panic("cannot create endpoint");
+        
+        ep = (endpoint_t *)ko_init((kobject_t *)ep, t, KO_ENDPOINT);
+        ep->count = 0;
+        initlock(&ep->lock, "endpoint");
+        list_init(&ep->queue);
+        ep->state = EP_STATE_IDLE;
+        ep->owner = t;
 
-    ep->count = 0;
-    ep->state = EP_STATE_IDLE;
-
-    cap_install(t, ep, CAP_ENDPOINT, CRIGHT_SND | CRIGHT_RCV);
-
-    if (unlikely(t->pid == 1))
+        ns_cap = cap_install(t, ep, CAP_ENDPOINT, CRIGHT_SND | CRIGHT_RCV);
         ns_ep = ep;
+    } else {
+          // Add name server endpoint as cap 0x100
+        ns_cap = cap_install(t, ns_ep, CAP_ENDPOINT, CRIGHT_SND);  
+    }
 
-    // initlock(&t->rep_lock, "ipc replay");
-    // t->replay_msg = NULL;
-
-    // Add name server endpoint as cap 1
-    cap_install(t, ns_ep, CAP_ENDPOINT, CRIGHT_SND);
-
+//    debug("[SCHED] NS cap id 0x%lX\n", ns_cap);
     // Set up new context to start executing at forkret,
     // which returns to user space.
-
-    // zeroed as part of task object
-//    memset(&t->context, 0, sizeof(t->context));
 
     t->context.ra = (uint64)forkret;
     t->context.sp = t->kstack->start + t->kstack->size;
@@ -636,7 +644,7 @@ sched_alloc_asid(uint64_t id)
 
     if(asid == 0) asid = 0xFFFF;
     // should be like (asid & kernel_map.asid_max)
-    return (asid & ((1ULL << 16) - 1));
+    return 0;// (asid & ((1ULL << 16) - 1));
 }
 
 
@@ -648,7 +656,7 @@ sched_growtask(int n)
     uint64_t    sz;
     task_t *t = mytask();
 
-    sz = t->sz;
+ //   sz = t->sz;
     if (n > 0)
     {
         if ((sz = mmu_user_vmalloc(t->pagetable, sz, sz + n, PTE_W)) == 0)
@@ -660,7 +668,103 @@ sched_growtask(int n)
     {
         sz = mmu_user_vmdealloc(t->pagetable, sz, sz + n);
     }
-    t->sz = sz;
+ //   t->sz = sz;
 
     return 0;
+}
+
+int fl2perm(int flags)
+{
+    int perm = 0;
+    if(flags & 0x1)
+      perm = PTE_X;
+    if(flags & 0x2)
+      perm |= PTE_W;
+    return perm;
+}
+
+int sched_task_control(task_t *t)
+{
+    int op = syscall_get_MR(t, msgRegisters[0]);
+
+    switch (op)
+    {
+    case TASK_OP_MEM_ALLOC: {
+        int cap_id     = syscall_get_MR(t, 0);    
+        uint64_t vaddr = syscall_get_MR(t, msgRegisters[1]);
+        uint64_t size  = syscall_get_MR(t, msgRegisters[2]);
+        uint64_t flags = syscall_get_MR(t, msgRegisters[3]);
+
+        cap_entry_t *ce = cap_lookup(t, cap_id);
+        if (!ce)  return -ERR_CAP_INVAL;
+
+        if (ce->type != CAP_TASK) return -ENOPERM;
+
+        task_t *task = (task_t *)ce->obj;
+
+        
+        if (mmu_memmap(task->pagetable, vaddr, size, PTE_R | PTE_U | PTE_W) != SUCCESS) {
+            return -ENOMEM;
+        }  
+        break;
+    }    
+    
+    case TASK_OP_MEM_MAP: {
+        int cap_id     = syscall_get_MR(t, 0);
+        uint64_t vaddr = syscall_get_MR(t, msgRegisters[1]);
+        int mem_cap    = syscall_get_MR(t, msgRegisters[2]);
+        uint64_t flags = syscall_get_MR(t, msgRegisters[3]);
+
+        cap_entry_t *ce = cap_lookup(t, cap_id);
+        if (!ce)  return -ERR_CAP_INVAL;
+
+        if (ce->type != CAP_TASK) return -ENOPERM;
+
+        task_t *task = (task_t *)ce->obj;
+
+        ce = cap_lookup(t, mem_cap);
+        if (!ce)  return -ERR_CAP_INVAL;
+
+        if (ce->type != CAP_FRAME) return -ENOPERM; 
+        
+        vmem_block_t *vmem = (vmem_block_t *)ce->obj;
+
+        mmu_move_pages(t->pagetable, task->pagetable, vmem->start, 
+                    vaddr, vmem->size, PTE_U | PTE_R | fl2perm(flags));
+        
+ //       task->sz = vaddr + vmem->size;
+        // free slot
+        vmem->type  = VMEM_NONE;
+        vmem->start = 0;
+        vmem->size  = 0;
+
+        cap_free(t, mem_cap);
+
+        break;
+    }
+
+    case TASK_OP_RUN: {
+        int cap_id = syscall_get_MR(t, 0);
+        uint64_t entry_point = syscall_get_MR(t, msgRegisters[1]);
+
+        cap_entry_t *ce = cap_lookup(t, cap_id);
+        if (!ce)  return -ERR_CAP_INVAL;
+
+        if (ce->type != CAP_TASK) return -ENOPERM;
+
+        task_t *task = (task_t *)ce->obj;
+    //    debug("\x1b[31m[TASK]\x1b[0m RUN  task %d at 0x%lX\n", task->pid, entry_point);
+        acquire(&task->lock);
+        task->trapframe->epc = entry_point;
+        set_task_state(task, RUNNABLE);
+        release(&task->lock);
+
+        break;
+    }
+
+    default:
+        break;
+    }
+
+    return SUCCESS;
 }

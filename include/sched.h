@@ -93,7 +93,7 @@ typedef struct trapframe
 
 enum task_state
 {
-    NEW,
+    NEW = 1,
     BLOCKED_RECV,
     BLOCKED_SEND,
     BLOCKED_REPLY,
@@ -112,7 +112,7 @@ struct ipc_msg;
  */
 typedef struct task
 {
-    struct kobject   hdr;
+    struct kobject      hdr;
     struct spinlock     lock;
 
     // t->lock must be held when using these:
@@ -128,7 +128,7 @@ typedef struct task
     // these are private to the process, so p->lock need not be held.
     struct kstack       *kstack;            // Kernel stack for a task
     struct mem_struct   *mm;                // Memory structure
-    uint64_t            sz;                 // Size of process memory (bytes)
+//    uint64_t            sz;                 // Size of process memory (bytes)
     //uint64_t            mmaddr;             // Memory map address
     pagetable_t         pagetable;          // User page table
     uint16_t            asid;               // ASID for SATP. Linux uses CONTEXTID
@@ -196,6 +196,13 @@ typedef struct task_manager {
     task_t *inittask;
 } task_manager_t;
 
+enum {
+    TASK_OP_MEM_ALLOC = 1,
+    TASK_OP_MEM_MAP,
+    TASK_OP_RUN,
+
+};
+
 void sched_init(void);
 task_t *mytask(void);
 void scheduler(void);
@@ -224,4 +231,10 @@ int sched_growtask(int n);
 kerrno_t uvm_alloc_mmreg(task_t *task, uint64_t vaddr, uint64_t size, uint64_t type, int xperm);
 struct mem_region *uvm_alloc_vmem(task_t *task, uint64_t vaddr, size_t size);
 struct mem_region *uvm_user_memmap(task_t *task, uint64_t addr, uint64_t size, uint64_t flags, uint64_t paddr);
+int uvm_init_mnode(task_t *t);
+vmem_block_t *uvm_find_free_slot(task_t *t);
+
+int uvm_alloc_vm(task_t *task, uint64_t vaddr, size_t size, uint16_t type, int xperm);
+int sched_task_control(task_t *t);
+
 #endif /* __SCHED_H__ */

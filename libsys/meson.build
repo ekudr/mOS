@@ -10,7 +10,7 @@ libsys_sources = [
 #    'string.c',
     'debug.c',
     'riscv_timer.c',
-
+    'elf.c',
 ]
 
 

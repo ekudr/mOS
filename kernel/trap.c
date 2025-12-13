@@ -62,6 +62,7 @@ void clockintr()
 //    wakeup(&ticks);
     release(&tickslock);
 //    board_heartbeat();
+//    debug(".");
 }
 
 // check if it's an external interrupt or software interrupt,
@@ -163,6 +164,12 @@ void usertrap(void)
 
     int which_dev = 0;
     
+    // if (mytask()->pid == 7) {
+    //     printf("usertrap(): scause %p pid=%d hartid=%d\n", r_scause(), mytask()->pid, current_cpu->hartid);
+    //     __show_regs(mytask());
+    //     panic("break");
+    // }
+
     if ((r_sstatus() & SSTATUS_SPP) != 0)
         panic("usertrap: not from user mode");
 
@@ -197,7 +204,7 @@ void usertrap(void)
     }
     else
     {
-        printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), t->pid);
+        printf("usertrap(): unexpected scause %p pid=%d hartid=%d\n", r_scause(), t->pid, current_cpu->hartid);
         printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
         __show_regs(t);
         sched_set_task_killed(t);
@@ -240,6 +247,11 @@ void usertrapret(void)
     // we're back in user space, where usertrap() is correct.
     intr_off();
 
+    // if (mytask()->pid == 7) {
+    //     printf("usertrap(): scause %p pid=%d hartid=%d\n", r_scause(), mytask()->pid, current_cpu->hartid);
+    //     __show_regs(mytask());
+    //     panic("break");
+    // }
     // send syscalls, interrupts, and exceptions to uservec in trampoline.S
 
     w_stvec(kernel_map.uservec);
@@ -250,7 +262,13 @@ void usertrapret(void)
     t->trapframe->kernel_sp = t->kstack->start + t->kstack->size; // process's kernel stack   t->kstack + PAGESIZE
     t->trapframe->kernel_trap = (uint64_t)usertrap;
     t->trapframe->kernel_hartid = r_tp(); // hartid for cpuid()
-
+    // if (t->pid == 7) {
+    //     printf("usertrap(): scause %p pid=%d hartid=%d\n", r_scause(), t->pid, current_cpu->hartid);
+    //     printf("    kernel stack %p pagetable %p\n", t->trapframe->kernel_sp, t->pagetable);
+    //     __show_regs(t);
+    //     mmu_pt_dump(t->pagetable);
+    //     panic("break");
+    // }
     // set up the registers that trampoline.S's sret will use
     // to get to user space.
 
@@ -267,9 +285,9 @@ void usertrapret(void)
 //    uint64_t satp = MAKE_SATP(DA2PA(t->pagetable));
     uint64_t satp = MAKE_USER_SATP(DA2PA(t->pagetable), t->asid);
 
-//    debug("[TRAP] user trap return SATP 0x%lX\n", satp);
-//    debug("[TRAP] user return addr SEPC 0x%lX\n", r_sepc());
-//    debug("[TRAP] task %d return addr SEPC 0x%lX\n", t->pid, t->trapframe->epc);
+    // debug("[TRAP] user trap return SATP 0x%lX\n", satp);
+    // debug("[TRAP] user return addr SEPC 0x%lX\n", r_sepc());
+    // debug("[TRAP] task %d return addr SEPC 0x%lX\n", t->pid, t->trapframe->epc);
 
     // jump to userret in trampoline.S at the top of memory, which
     // switches to the user page table, restores user registers,

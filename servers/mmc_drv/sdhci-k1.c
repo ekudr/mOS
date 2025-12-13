@@ -26,8 +26,8 @@ kerrno_t board_init_host(struct mmc_host *host)
     host->quirks = SDHCI_QUIRK_WAIT_SEND_CMD;
     host->buswidth	= 4;
     host->max_clk = 50000000;
-    host->caps = MMC_CAP(MMC_LEGACY) | MMC_MODE_1BIT  | MMC_CAP_CD_ACTIVE_HIGH | MMC_CAP(SD_HS) ;
-//  | MMC_MODE_4BIT        ;
+    host->caps = MMC_CAP(MMC_LEGACY) | MMC_MODE_1BIT ;
+//  | MMC_MODE_4BIT    | MMC_CAP_CD_ACTIVE_HIGH  | MMC_CAP(SD_HS)     ;
 
     /* Setup dsr related values */
 //	host->mmc->dsr_imp = 0;

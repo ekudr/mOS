@@ -7,6 +7,7 @@ kernel_sources = [
     'mm/shmem.c',
     'mm/vm.c',
     'mm/uvm.c',
+    'mm/cache.c',
     'trap.c',
     'sbi.c',
     'sched.c',

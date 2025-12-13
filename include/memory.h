@@ -116,6 +116,25 @@ struct kstack_manager
 
 typedef struct kstack_manager kstack_manager_t;
 
+typedef enum {
+    VMEM_NONE = 0,
+    VMEM_NULL,
+    VMEM_UNTYPED,
+    VMEM_MNODE,
+    VMEM_CODE,
+    VMEM_MEM,
+    VMEM_IO,
+} vmem_type_t;
+
+typedef struct vmem_block
+{
+    kobject_t       hdr;
+    uint64_t start;
+    uint32_t size;
+    uint16_t type;
+} vmem_block_t;
+
+
 /*
  * Page structures
  */
@@ -178,7 +197,6 @@ typedef struct mem_struct
 {
     spinlock_t  lock;
     uint64_t    task_size;
-    pagetable_t pagetable;
     uint64_t    mmap_base;
     uint64_t    mmap_addr;
     uint64_t    start_brk;

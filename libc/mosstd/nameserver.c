@@ -20,7 +20,7 @@ kerrno_t ns_register_cap(int cap_id, char *name, uint32_t rights)
     msg->type = NS_REGISTER;
     strncpy(msg->name, name, sizeof(msg->name)-1);
 
-    // Grant capability to nameserver
+    // Copy cap to nameserver
     int ns_cap = cap_grant(cap_id, pid, -1, rights);
     if (ns_cap < 0) {
         debug("Error granting cap %d \n", ns_cap);
@@ -37,7 +37,7 @@ kerrno_t ns_register_cap(int cap_id, char *name, uint32_t rights)
     ipc_set_cap(0, ns_cap);
 
     uint64_t info = msginfo_word_new(0, sizeof(ns_msg_t)/8, 1, 0);
-    info = ipc_call(1, info);
+    info = ipc_call(0x100, info);
 
     int ret = (int)label_from_msginfo_word(info);
     if (ret < 0 || !length_from_msginfo_word(info)) {
@@ -62,15 +62,17 @@ int ns_lookup_cap(char *name)
     strncpy(msg->name, name, sizeof(msg->name)-1);
 
     uint64_t info = msginfo_word_new(0, sizeof(ns_msg_t)/8, 0, 0);
-    info = ipc_call(1, info);
+    info = ipc_call(0x100, info);
 
     int ret = (int)label_from_msginfo_word(info);
+//        debug("\x1b[31m[NSLIB]\x1b[0m lookup ret %d info 0x%lX\n", ret, info);
     if (ret < 0 || !length_from_msginfo_word(info)) {
         debug("Error registring cap %d \n", ret);
     }
 
-    if (msg->type == NS_REPLAY)
-        ret = msg->cap_id;
+    ret = msg->cap_id;
+    if (msg->type == NS_REPLAY && msg->cap_id > 0)
+        ret = ipc_get_cap(0);
  
     return ret;
 }
