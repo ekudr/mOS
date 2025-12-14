@@ -56,7 +56,11 @@ static inline void putreg64(uint64_t v, const volatile uint64_t a)
 #define SSTATUS_UPIE (1L << 4) // User Previous Interrupt Enable
 #define SSTATUS_SIE (1L << 1)  // Supervisor Interrupt Enable
 #define SSTATUS_UIE (1L << 0)  // User Interrupt Enable
+#define SSTATUS_FS    0x00006000
 
+#define SSTATUS_FS_CLEAN    0x00004000
+#define SSTATUS_FS_INITIAL  0x00002000
+#define SSTATUS_FS_DIRTY    0x00006000
 
 static inline uint64_t 
 r_sstatus(void)
@@ -251,5 +255,18 @@ r_pmpcfg0(void)
     __asm__ __volatile__("csrr %0, pmpcfg0" : "=r" (x) );
     return x;
 }
+
+static inline uint32_t r_fcsr(void)
+{
+    uint32_t x;
+    asm volatile("csrr %0, fcsr" : "=r"(x));
+    return x;
+}
+
+static inline void w_fcsr(uint32_t x)
+{
+    asm volatile("csrw fcsr, %0" :: "rK"(x));
+}
+
 
 #endif /* __RISCV_H__ */

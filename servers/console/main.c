@@ -69,7 +69,7 @@ int console_init()
     if (ret < 0) panic("font load");
 
     ret = fb_console_init(&con, addr, 640, 480, 32, 2560, 
-                        0xFFDBA400, 0xFF080600, font);
+                        0xFFDBA400, 0x9F080600, font);
     if (ret < 0) panic("fb console init");
 
     fb_puts(&con, "mOS version 0.0.2\n");

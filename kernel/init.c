@@ -7,6 +7,7 @@
 #include <servers_loader.h>
 #include <ipc.h>
 #include <irq.h>
+#include <fpu.h>
 
 extern uint64_t boot_hartid;
 extern struct cpu cpus[NCPUS];
@@ -19,6 +20,14 @@ int sbi_hsm_hart_start(unsigned long hartid, unsigned long saddr, unsigned long 
 void _hart_start(void);
 
 void heartbeat_init(void);
+
+static void init_fpu(void)
+{
+    set_fs_clean();
+    w_fcsr(0);
+
+}
+
 
 void
 board_start_harts(void) {
@@ -76,6 +85,12 @@ kernel_init(void)
 
     heartbeat_init();
 
+    // disable FPU access 
+    set_fs_off();
+
+    init_fpu();
+
+
     ipc_init();
     sched_init();
 
@@ -113,6 +128,12 @@ boot_init_hart(int hartid)
     w_sie(r_sie() | SIE_SEIE | SIE_STIE | SIE_SSIE);
     //Set TIMER
     sbi_set_timer(r_time() + usec_to_tick(TIMER_INTERVAL));
+
+    // disable FPU access 
+    set_fs_off();
+
+    init_fpu();
+
     scheduler();
     for(;;);
     // never return

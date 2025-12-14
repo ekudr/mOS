@@ -87,6 +87,43 @@ typedef struct trapframe
     /* 280 */ uint64 t6;
 } trapframe, trapframe_t;
 
+typedef struct fpu_state
+{
+    uint64 f0;
+    uint64 f1;
+    uint64 f2;
+    uint64 f3;
+    uint64 f4;
+    uint64 f5;
+    uint64 f6;
+    uint64 f7;
+    uint64 f8;
+    uint64 f9;
+    uint64 f10;
+    uint64 f11;
+    uint64 f12;
+    uint64 f13;
+    uint64 f14;
+    uint64 f15;
+    uint64 f16;
+    uint64 f17;
+    uint64 f18;
+    uint64 f19;
+    uint64 f20;
+    uint64 f21;
+    uint64 f22;
+    uint64 f23;
+    uint64 f24;
+    uint64 f25;
+    uint64 f26;
+    uint64 f27;
+    uint64 f28;
+    uint64 f29;
+    uint64 f30;
+    uint64 f31;
+    uint32 fcsr;
+} fpu_state, fpu_state_t;
+
 
 
 
@@ -134,7 +171,7 @@ typedef struct task
     uint16_t            asid;               // ASID for SATP. Linux uses CONTEXTID
     struct trapframe    *trapframe;         // data page for trampoline.S
     struct context      context;            // swtch() here to run process
-
+    fpu_state_t         *fpu_state;         // fpu context
     char                name[16];           // Process name (debugging)
 
     // Task list links

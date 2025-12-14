@@ -54,11 +54,14 @@ static void blit_window_to_fb(wm_window_t *w, uint32_t src_x, uint32_t src_y,
             } else {
                 // simple alfa blend: dst = src*alfa + dst*(1-alfa)
                 // shout be with float ??? FIXME
-                uint8_t a = sa;  // float a = sa / 255.0f
-             //   d[0] = (uint8_t)(s[0] * a + d[0] * (1.0f - a));
-                d[0] = (uint8_t)(s[0] * a + d[0] * (1 - a));
-                d[0] = (uint8_t)(s[1] * a + d[1] * (1 - a));
-                d[2] = (uint8_t)(s[2] * a + d[2] * (1 - a));
+                //uint8_t a = sa;  
+                float a = sa / 255.0f;
+                d[0] = (uint8_t)(s[0] * a + d[0] * (1.0f - a));
+                d[1] = (uint8_t)(s[1] * a + d[1] * (1.0f - a));
+                d[2] = (uint8_t)(s[2] * a + d[2] * (1.0f - a));
+                // d[0] = (uint8_t)(s[0] * a + d[0] * (1 - a));
+                // d[1] = (uint8_t)(s[1] * a + d[1] * (1 - a));
+                // d[2] = (uint8_t)(s[2] * a + d[2] * (1 - a));
                 d[3] = 0xFF;
             }
             s += 4; d += 4;

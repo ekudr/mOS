@@ -6,6 +6,7 @@
 #include <khash.h>
 #include <cap.h>
 #include <sysproc.h>
+#include <fpu.h>
 
 struct cpu cpus[NCPUS];
 
@@ -342,9 +343,13 @@ void sched_to_scheduler(void)
     if (intr_get())
         panic("[SCHED] task interruptible");
 
+    fpu_save_state(t);
+
     intena = current_cpu->intena;
     swtch(&t->context, &current_cpu->context);
     current_cpu->intena = intena;
+
+    fpu_load_state(mytask());
 }
 
 /*
@@ -523,6 +528,9 @@ sched_taskalloc(void)
     }
     t->trapframe = (trapframe_t *)PPN2DA(ppn);
     memset(t->trapframe, 0, PAGE_SIZE);
+
+    t->fpu_state = (fpu_state_t *)malloc(sizeof(fpu_state_t));
+    memset(t->fpu_state, 0, sizeof(fpu_state_t));
 
 //    cap_insert(&t->caps[0], cap_create_node(t), CAP_CNODE, 0);
     int err = cap_init_cnode(t);
