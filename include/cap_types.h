@@ -18,6 +18,7 @@ typedef enum {
     CAP_REPLAY,
     CAP_TASK,
     CAP_FRAME,
+    CAP_DMA_FRAME,
     CAP_SHMEMORY,
     CAP_IRQ,
 } cap_type_t;

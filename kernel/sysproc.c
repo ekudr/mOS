@@ -226,30 +226,17 @@ uint64_t __sys_shmem_attach(void)
     return (uint64_t)sys_ipc_shm_attach(t, (int)cap_id, (const void *)addr, (int)flags);
 }
 
-// uint64_t sys_fast_call(void)
-// {
-//     uint64_t arg1, arg2, arg3, arg4, arg5, arg6, arg7;
-//     arg1 = syscall_argraw(0);
-//     arg2 = syscall_argraw(1);
-//     arg3 = syscall_argraw(2);
-//     arg4 = syscall_argraw(3);
-//     arg5 = syscall_argraw(4);
-//     arg6 = syscall_argraw(5);
-//     arg7 = syscall_argraw(6);
-//     debug("[IPC_CALL] arg1 0x%lX arg2 0x%lX arg3 0x%lX arg4 0x%lX arg5 0x%lX arg6 0x%lX arg7 0x%lX\n",
-//                 arg1, arg2, arg3, arg4, arg5, arg6, arg7);
-        
-//     task_t *t = mytask();
+uint64_t __sys_dmamem_attach(void)
+{
+    int ret;
+    task_t *t = mytask();
 
-//     t->trapframe->a1 = 0x101;
-//     t->trapframe->a2 = 0x103;
-//     t->trapframe->a3 = 0x104;
-//     t->trapframe->a4 = 0x105;
-//     t->trapframe->a5 = 0x106;
-//     t->trapframe->a6 = 0x107;
+    uint64_t cap_id = syscall_argraw(0);
 
-//     return 0x100;
-// }
+    ret = sys_dmamem_attach(t, (int)cap_id);
+    if (ret < 0) __sys_error_return(t, ret);
+    return t->trapframe->a0;
+}
 
 uint64_t __sys_recv(void)
 {

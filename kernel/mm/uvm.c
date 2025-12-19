@@ -4,6 +4,7 @@
 #include <sched.h>
 #include <errno.h>
 #include <cap.h>
+#include <sysproc.h>
 
 /*
  * Allocate memory region in given task.
@@ -329,4 +330,36 @@ int uvm_alloc_vm(task_t *task, uint64_t vaddr, size_t size, uint16_t type, int x
     return 0;
 }
 
+int sys_dmamem_attach(task_t *t, int cap_id)
+{
+    int ret;
+//    debug("[IPC] shmat id 0x%lX addr 0x%lX fl 0x%lX\n", shmid, addr, flags);
+    if (!cap_id) return -EINVAL;
 
+    cap_entry_t *ce = cap_lookup(t, cap_id);
+    if (!ce || ce->type != CAP_DMA_FRAME || !(ce->rights & CRIGHT_MAP)){
+        return -EPERM;
+    }    
+
+    dma_mem_block_t *mem = (dma_mem_block_t *)ce->obj;
+//    if (shm->ko.type != KO_SHMEM) return NULL; 
+
+//    uint32_t rights = syscall_get_MR(t, msgRegisters[1]);
+//    size_t size     = syscall_get_MR(t, msgRegisters[2]);
+    uint64_t vaddr  = syscall_get_MR(t, msgRegisters[0]);
+
+
+    mem_reg_t *mreg = uvm_alloc_vmem(t, (uint64_t)vaddr, mem->size);
+    if (!mreg){
+        panic("[UVM] can not allocate memreg");
+        return -ENOMEM;      
+    }
+
+    ret = mmu_map_pages(t->pagetable, mreg->addr, PAGE_SIZE, mem->addr, PTE_R | PTE_U | PTE_W);
+    if (ret <0)
+            return ret; 
+
+    syscall_set_MR(t, msgRegisters[0], mreg->addr);
+
+    return SUCCESS;
+}

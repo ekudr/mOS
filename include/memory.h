@@ -231,6 +231,13 @@ typedef struct mem_region
     };
 } mem_reg_t;
 
+typedef struct dma_mem_block
+{
+    kobject_t       hdr;
+    uint64_t        addr;
+    uint64_t        size;    
+} dma_mem_block_t;
+
 
 #define SECTION_SHIFT 56
 #define SECTION_MASK 0xFF

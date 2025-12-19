@@ -126,6 +126,7 @@ int ipc_init(void);
 // void *ipc_att_shm(uint64_t shmid, const void *addr, int flags);
 
 void *sys_ipc_shm_attach(struct task *t, int cap_id, const void *addr, int flags);
+int sys_dmamem_attach(struct task *t, int cap_id);
 
 // uint64_t sys_ipc_call(struct task *t, uint32_t id, uint64_t umsg, uint64_t urep, uint64_t size);
 // uint64_t sys_ipc_recv(struct task *t, uint32_t id, uint64_t uaddr, uint64_t size, int flags);

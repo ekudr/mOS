@@ -3,6 +3,7 @@
 #include <atomic.h>
 #include <memory.h>
 
+
 kmem_slub_t *slub_map;
 
 vmem_mgr_t vm_mgr;
@@ -155,6 +156,8 @@ vm_kstack_alloc(size_t size)
 
     return mem;
 }
+
+
 
 void
 vmem_init(void)

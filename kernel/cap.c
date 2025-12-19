@@ -317,6 +317,37 @@ int cap_frame_create(task *t)
     return ret;
 }    
 
+int cap_dma_frame(task *t)
+{
+    int ret;
+    uint32_t rights = syscall_get_MR(t, msgRegisters[1]);
+    size_t size     = syscall_get_MR(t, msgRegisters[2]);
+
+    // ??? FIXME allocating one page only now
+    if (!size || size > PAGE_SIZE) return -EINVAL;
+
+    dma_mem_block_t *mem = malloc(sizeof(dma_mem_block_t));
+    if (!mem) return -ENOMEM;
+
+    mem = (dma_mem_block_t *)ko_init((kobject_t *)mem, t, KO_SHMEM);
+
+    uint64_t ppn = pgalloc();
+    if (!ppn) return -ENOMEM;
+
+    mem->addr = PPN2PA(ppn);
+    mem->size = PAGE_SIZE;
+
+    ret = cap_install(t, mem, CAP_DMA_FRAME, 0);
+    if (ret < 0) {
+        // free_shmem()
+        mfree(mem);
+    }
+
+    syscall_set_MR(t, msgRegisters[1], mem->addr);
+
+    return ret;
+}
+
 int sys_capability_create(task_t *t)
 {
     int ret;
@@ -340,6 +371,10 @@ int sys_capability_create(task_t *t)
 
         case CAP_FRAME:
             ret = cap_frame_create(t);
+            break;
+
+        case CAP_DMA_FRAME:
+            ret = cap_dma_frame(t);
             break;
 
         default:

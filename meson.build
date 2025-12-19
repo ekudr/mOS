@@ -14,6 +14,7 @@ has_mcpu = cc.has_argument('-mcpu')
 has_march = cc.has_argument('-march')
 
 c_args = [
+    '-std=gnu11',
     '-nostdlib',
 #    '-fno-stack-protector',
     '-static', 

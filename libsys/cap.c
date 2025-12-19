@@ -65,6 +65,20 @@ int cap_frame_create(void *addr, uint64_t size, cap_rights_t rights)
     return ipc_getMR(0);
 }
 
+int cap_dmamem_create(uint64_t size, cap_rights_t rights, uint64_t *paddr)
+{
+    ipc_setMR(0, CAP_DMA_FRAME);
+    ipc_setMR(1, rights);
+    ipc_setMR(2, size);
+
+    uint64_t info = msginfo_word_new(0, 3, 0, 0);
+    cap_create((uint64_t)-1, info);
+
+    *paddr = ipc_getMR(1); 
+
+    return ipc_getMR(0);
+}
+
 int cap_task_mem_move(int cap_id, void *vaddr, int mem_cap, uint64_t flags)
 {
     // TASK_OP_MEM_MOVE

@@ -1,6 +1,7 @@
 include_libc = [include_directories('./include')]
 
 c_args_libc = [
+    '-std=gnu11',
     '-nostdinc',
     '-pipe',
     '-ffreestanding',

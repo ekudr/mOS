@@ -12,6 +12,7 @@ int create_capability(cap_type_t type, cap_rights_t rights);
 int cap_grant(int from_id, uint64_t to_pid, int to_slot, uint32_t req_rights);
 
 int cap_shmem_create(uint64_t size, cap_rights_t rights);
+int cap_dmamem_create(uint64_t size, cap_rights_t rights, uint64_t *paddr);
 int cap_frame_create(void *addr, uint64_t size, cap_rights_t rights);
 int cap_create(uint64_t dest, msg_info_t info);
 int cap_free(int cap_id);

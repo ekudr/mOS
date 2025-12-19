@@ -23,19 +23,16 @@ struct task;
 
 typedef struct kobject
 {
-//    uint32_t    type;
+    uint16_t    type;
     uint16_t    refcount;
-//    struct task *owner;
-//    spinlock_t  lock;
+
 } kobject_t;
 
-static inline kobject_t *ko_init(kobject_t *ko, struct task *task, uint32_t type)
+static inline kobject_t *ko_init(kobject_t *ko, struct task *task, uint16_t type)
 {
-    if (ko == NULL) return NULL;
+    if (!ko) return NULL;
     __atomic_store_n(&ko->refcount, 1, __ATOMIC_RELEASE);
-//    initlock(&ko->lock, "obj");
-//    ko->type = type;
-//    ko->owner = task;
+    ko->type = type;
     return ko;
 }
 
