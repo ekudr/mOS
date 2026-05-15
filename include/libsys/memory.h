@@ -78,6 +78,7 @@ struct mem_mgr
     list_head_t qheap;
     list_head_t qfast[NFASTBINS];
     list_head_t qfree;
+    void *heap_top;
 
     // ----- Statistic -----
     // System memory allocated

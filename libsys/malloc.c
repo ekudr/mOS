@@ -12,7 +12,6 @@ mem_mgr_t memory_manager;
 
 mem_mgr_t *gp_mmgr = NULL;
 
-void *heap_top;
 
 int mem_init(size_t size)
 {
@@ -25,7 +24,7 @@ int mem_init(size_t size)
 
     gp_mmgr->sysmem = 0;
 
-    heap_top = (void *)PGROUNDUP((uint64_t)_end);
+    gp_mmgr->heap_top = (void *)PGROUNDUP((uint64_t)_end);
 
     if(request_heap(size) < 0)
         return -1;
@@ -76,6 +75,7 @@ static void __sorted_insert_and_coalesce(mchunkptr_t chunk)
             list_del(&nxt->freelist);
         }
     }
+
 }
 
 /* Drain all fastbins into qfree with coalescing. Called before growing the heap. */
@@ -168,12 +168,12 @@ int request_heap(size_t size)
 
     size_t bsize = (size <= HEAP_MIN_SIZE) ? HEAP_MIN_SIZE : size;
 
-    heap = (mem_heap_t *)mmap(heap_top, bsize, MAP_PRIVATE | MAP_READ | MAP_WRITE, 0);
+    heap = (mem_heap_t *)mmap(gp_mmgr->heap_top, bsize, MAP_PRIVATE | MAP_READ | MAP_WRITE, 0);
 
     /* mOS sys_mmap returns NULL on failure, unlike POSIX MAP_FAILED */
     if (heap == NULL)
         return -ENOMEM;
-    heap_top += bsize;
+    gp_mmgr->heap_top += bsize;
 
     list_init(&heap->heaplist);
     list_add(&gp_mmgr->qheap, &heap->heaplist);
