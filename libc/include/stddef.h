@@ -1,8 +1,9 @@
 #ifndef __STDDEF_H__
 #define __STDDEF_H__
 
-
+#ifndef __cplusplus
 typedef enum {false,true} bool;
+#endif
 
 #ifndef NULL
   /* SDCC is sensitive to NULL pointer type conversions, and C++ defines

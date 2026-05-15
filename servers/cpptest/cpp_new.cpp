@@ -44,3 +44,20 @@ void operator delete[](void* p) {
 void operator delete(void* ptr, std::size_t size) noexcept {
     ::operator delete(ptr);
 }
+
+void test_mem()
+{
+    void *m;
+
+    for(auto i = 0; i < 100; i++)
+    {
+        m = malloc(64);
+        free(m);
+    }
+
+        for(auto i = 0; i < 70; i++)
+    {
+        m = malloc(150);
+        free(m);
+    }
+}

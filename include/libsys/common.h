@@ -14,6 +14,10 @@
 #define __ALIGN(n) __attribute__ ((aligned (n)))
 #define __CACHE_ALIGN __attribute__ ((aligned (64)))
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int debug(const char *format, ...);
 
 char* sbrk(int);
@@ -25,5 +29,9 @@ int cache_invalidate(void *addr, size_t size);
 
 kerrno_t irq_set(uint64_t irq, uint64_t flags);
 kerrno_t irq_act(uint64_t irq, uint64_t flags);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* __LIBSYS_COMMON_H__ */

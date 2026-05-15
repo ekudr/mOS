@@ -186,12 +186,25 @@ cpptest_elf = executable(
     link_depends: [libsys_a, libc_a, ],    
 )
 
+srvrs_list = [
+    nameserver_elf, 
+    vfs_elf, 
+    devman_elf, 
+    tty_elf, 
+    usb3_elf, 
+    usb_core_elf,
+    mmc_drv_elf, 
+    wm_elf, 
+    console_elf, 
+    one_elf, 
+    cpptest_elf,
+]
+
 servers_img = custom_target('image',
-    input: [nameserver_elf, vfs_elf, devman_elf, tty_elf, usb3_elf, usb_core_elf,
-             mmc_drv_elf, wm_elf, console_elf, one_elf],
+    input: [srvrs_list],
     output: 'servers.img',
     command: [py3, meson.project_source_root() +'/tools/build_img.py', '@INPUT@', '-o', '@OUTPUT@'],
-    depends: [devman_elf, one_elf],
+    depends: [srvrs_list],
     build_by_default: true
 )
 
