@@ -119,7 +119,7 @@ void wm_composite(void)
     for (uint32_t row = 0; row < WM.fb_h; ++row) {
         memcpy(dst + (size_t)row * WM.fb_pitch, src + (size_t)row * WM.fb_pitch, WM.fb_w * 4);
     }
-       cash_flash((void *)FB_BASE, (size_t)FB_SIZE);
+       cache_flush((void *)FB_BASE, (size_t)FB_SIZE);
 }
 
 

@@ -28,6 +28,10 @@ uint64_t sys_fork(void)
     return 0;
 }
 
+uint64_t __sys_wait_irq(void)
+{
+    return 0;
+}
 uint64_t sys_exit(void)
 {
     int n;
@@ -76,34 +80,34 @@ uint64_t sys_mmap(void)
     return mreg->addr;
 }
 
-uint64_t sys_sbrk(void)
-{
-    uint64_t    addr;
-    task_t      *t;
-    int         size;
+// uint64_t sys_sbrk(void)
+// {
+//     uint64_t    addr;
+//     task_t      *t;
+//     int         size;
 
-    syscall_argint(0, &size);
-    t = mytask();
-    if (size == 0)
-        return t->mm->brk;
+//     syscall_argint(0, &size);
+//     t = mytask();
+//     if (size == 0)
+//         return t->mm->brk;
 
-    addr = t->mm->brk;
-    if (size > 0)
-    {        
-        size = PGROUNDUP(size);
-        if (uvm_alloc_mmreg(t, addr, size, MM_REG_MEM, PTE_U | PTE_R | PTE_W) != SUCCESS)        
-            return -ENOMEM;
+//     addr = t->mm->brk;
+//     if (size > 0)
+//     {        
+//         size = PGROUNDUP(size);
+//         if (uvm_alloc_mmreg(t, addr, size, MM_REG_MEM, PTE_U | PTE_R | PTE_W) != SUCCESS)        
+//             return -ENOMEM;
         
-        t->mm->brk += size;
-    }
-    else if (size < 0)
-    {
-        panic("[SYSCALL] SBRK redues memory is not implemented yet");
-    }
+//         t->mm->brk += size;
+//     }
+//     else if (size < 0)
+//     {
+//         panic("[SYSCALL] SBRK redues memory is not implemented yet");
+//     }
 
     
-    return addr;
-}
+//     return addr;
+// }
 
 void flush_dcache_range(unsigned long start, unsigned long end);
 
@@ -112,6 +116,17 @@ uint64_t __sys_cache_flush(void)
     uint64_t addr = syscall_argraw(0);
     uint64_t size = syscall_argraw(1);
     flush_dcache_range(addr, addr + size);
+
+    return 0;
+}
+
+void invalidate_dcache_range(unsigned long start, unsigned long end);
+
+uint64_t __sys_cache_inval(void)
+{
+    uint64_t addr = syscall_argraw(0);
+    uint64_t size = syscall_argraw(1);
+    invalidate_dcache_range(addr, addr + size);
 
     return 0;
 }
@@ -153,6 +168,7 @@ uint64_t sys_snd_sig(void)
     tid      = syscall_argraw(0);
     sig      = syscall_argraw(1);
     payload  = syscall_argraw(2);  
+
     dst_task = sched_find_task(tid);
 
     return (uint64_t)signal_send(dst_task, sig, payload);

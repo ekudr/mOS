@@ -122,7 +122,7 @@ int fb_console_init(fb_console_t *c, void *fb_base, uint32_t width, uint32_t hei
 //    debug("[CONS] width %d height %d\n", c->cols, c->rows);
     debug("[CONS] num glyphs %d\n", c->font.glyphs);
     fb_fill_rect(c, 0, 0, c->width, c->height, c->bg_color);
-    cash_flash((void *)FB_BASE, (size_t)FB_SIZE);
+    cache_flush((void *)FB_BASE, (size_t)FB_SIZE);
 
     return SUCCESS;
 }
@@ -250,7 +250,7 @@ void fb_puts(fb_console_t *c, const char *s)
     {
         fb_putc(c, (unsigned char)*s++);
     }
-    cash_flash((void *)FB_BASE, (size_t)FB_SIZE);
+    cache_flush((void *)FB_BASE, (size_t)FB_SIZE);
 }
 
 void fb_set_colors(fb_console_t *c, uint32_t fg, uint32_t bg)

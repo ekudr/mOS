@@ -1,6 +1,6 @@
-#include <common.h>
+#include <mosstd.h>
 #include <riscv.h>
-#include <libsys/memory.h>
+//#include <libsys/memory.h>
 #include <libsys/timer.h>
 
 #include "k1x.h"

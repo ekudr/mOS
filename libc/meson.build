@@ -69,6 +69,7 @@ libc_sched = [
 libc_signal = [
     'signal/sigaction.c',
     'signal/restore.c',
+    'signal/sigsend.c',
 ]
 
 libc_a = static_library(

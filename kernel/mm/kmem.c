@@ -94,10 +94,39 @@ kstack_free(kstack_t *ks)
     return 0;
 }
 
+static void kmem_init_cma()
+{
+    gp_vmmgr->cma_mem_start = 0;
+    for(int i=0; i < kernel_map.nmemblocks; i++){
+        if (board_memmap[i].type == MEM_CMA) {
+            if (gp_vmmgr->cma_mem_start) break;
+            debug("[KMEM] Init CMA memory from 0x%lX to 0x%lX\n", board_memmap[i].base, board_memmap[i].top);
+            gp_vmmgr->cma_mem_start = board_memmap[i].base;
+            gp_vmmgr->cma_mem_end = board_memmap[i].top;
+            gp_vmmgr->cma_mem_top = board_memmap[i].base;
+        }
+    }
 
 
-static void
-kstack_init(void)
+}
+
+uint64_t kmem_cma_alloc(size_t size)
+{
+    uint64_t cma_start;
+    acquire(&gp_vmmgr->lock);
+    if ((gp_vmmgr->cma_mem_top + size) > gp_vmmgr->cma_mem_end) {
+        release(&gp_vmmgr->lock);
+        return 0;
+    }
+    cma_start = gp_vmmgr->cma_mem_top;
+    gp_vmmgr->cma_mem_top += size;
+    release(&gp_vmmgr->lock);
+
+    memset((void *)PA2DA(cma_start), 0, size);
+    return cma_start;
+}
+
+static void kstack_init(void)
 {
     gp_ksm = &g_kstack_manager;
     initlock(&gp_ksm->lock, "kstack");
@@ -106,13 +135,13 @@ kstack_init(void)
     list_init(&gp_ksm->alloc);
 }
 
-void
-kmem_init(void)
+void kmem_init(void)
 {
     for(int i = 0; i < NELEM(kcache_idx_size); i++){
         __new_kmem_cache(i);
     } 
     kstack_init();
+    kmem_init_cma();
 }
 
 

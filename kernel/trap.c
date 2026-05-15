@@ -164,12 +164,6 @@ void usertrap(void)
 
     int which_dev = 0;
     
-    // if (mytask()->pid == 7) {
-    //     printf("usertrap(): scause %p pid=%d hartid=%d\n", r_scause(), mytask()->pid, current_cpu->hartid);
-    //     __show_regs(mytask());
-    //     panic("break");
-    // }
-
     if ((r_sstatus() & SSTATUS_SPP) != 0)
         panic("usertrap: not from user mode");
 
@@ -213,25 +207,12 @@ void usertrap(void)
     if (sched_get_task_killed(t))
             sched_task_exit(-1);
 
-    // give up the CPU if this is a timer interrupt.
-    if (which_dev == 2){
-//        debug("[TRAP] task %d YIELD required\n", t->pid);
-    if (t->sighand != NULL){
-//        debug("Kernel SP 0x%lX EPC 0x%lX\n", r_sp(), r_sepc());
-        if (t->sighand->pending_mask) {
-//            debug("PENDING SIGNAL\n");
-            signal_entry_t e;
-            signal_getnext(t, &e);
-//            debug("Got sig %d payload %d\n", e.signal, e.payload);
-            delivery_signal(t, e.signal, e.payload); 
-        }
-         
-//        debug("Kernel SP 0x%lX EPC 0x%lX\n", r_sp(), r_sepc());
-    }
         
-
+    if (which_dev == 2){
+        // give up the CPU if this is a timer interrupt.
         sched_task_yield();
     }
+  
     usertrapret();
 }
 
@@ -241,6 +222,19 @@ void usertrap(void)
 void usertrapret(void)
 {
     task_t *t = mytask();
+
+
+    // check pending signals
+    if (t->sighand != NULL){
+        if (__atomic_load_n(&t->sighand->pending_mask, __ATOMIC_RELAXED)) {
+//            debug("PENDING SIGNAL\n");
+            signal_entry_t e;
+            if (signal_getnext(t, &e) == SUCCESS) {
+//            debug("Got sig %d payload %d\n", e.signal, e.payload);
+                delivery_signal(t, e.signal, e.payload);
+            }
+        }
+    } 
 
     // we're about to switch the destination of traps from
     // kerneltrap() to usertrap(), so turn off interrupts until
@@ -308,12 +302,12 @@ void usertrapret(void)
 uint64_t usersigret(void)
 {
     
-    if ((r_sstatus() & SSTATUS_SPP) != 0)
-        panic("usertrap: not from user mode");
+    // if ((r_sstatus() & SSTATUS_SPP) != 0)
+    //     panic("usertrap: not from user mode");
 
-    // send interrupts and exceptions to kerneltrap(),
-    // since we're now in the kernel.
-    w_stvec((uint64_t)kernelvec);
+    // // send interrupts and exceptions to kerneltrap(),
+    // // since we're now in the kernel.
+    // w_stvec((uint64_t)kernelvec);
 
     task_t *t = mytask();
 
@@ -321,14 +315,12 @@ uint64_t usersigret(void)
     trapframe_t *regs = t->trapframe;
     uint64_t    usp = t->trapframe->sp;
 
-
-
     mmu_user_copyin(t->pagetable, (char *)regs, usp, sizeof(trapframe_t));
-    intr_on();
+//    intr_on();
 
 //    w_sepc(t->trapframe->epc);
-//    debug("Restored: \n");
-//    __show_regs(t);
+    // debug("Restored: \n");
+    // __show_regs(t);
 
     return 0;
 }
@@ -340,8 +332,9 @@ void delivery_signal(task_t * t, signal_t sig, signal_payload_t payload)
 {
     trapframe_t *regs = t->trapframe;
     signal_hand_t *th = t->sighand;
-//    debug("[SIGIN] task %d regs at 0x%lX th 0x%lX\n", t->pid, regs, th);
-//    __show_regs(t);
+//     debug("[SIGIN] task %d regs at 0x%lX th 0x%lX\n", t->pid, regs, th);
+//  debug("[SIGIN] Delivering signal %d to task %d payload %d\n", sig, t->pid, payload);
+    // __show_regs(t);
    
 //    debug("Kernel SP 0x%lX EPC 0x%lX\n", r_sp(), r_sepc());
 
@@ -353,10 +346,10 @@ void delivery_signal(task_t * t, signal_t sig, signal_payload_t payload)
     w_stvec(kernel_map.uservec);
     // set up trapframe values that uservec will need when
     // the process next traps into the kernel.
-//    t->trapframe->kernel_satp = r_satp();                           // kernel page table
-//    t->trapframe->kernel_sp = t->kstack->start + t->kstack->size; // process's kernel stack   t->kstack + PAGESIZE
-//    t->trapframe->kernel_trap = (uint64_t)usertrap;
-//    t->trapframe->kernel_hartid = r_tp(); // hartid for cpuid()
+   t->trapframe->kernel_satp = r_satp();                           // kernel page table
+   t->trapframe->kernel_sp = t->kstack->start + t->kstack->size; // process's kernel stack   t->kstack + PAGESIZE
+   t->trapframe->kernel_trap = (uint64_t)usertrap;
+   t->trapframe->kernel_hartid = r_tp(); // hartid for cpuid()
 
     // set up the registers that trampoline.S's sret will use
     // to get to user space.
@@ -364,7 +357,7 @@ void delivery_signal(task_t * t, signal_t sig, signal_payload_t payload)
     // set S Previous Privilege mode to User.
     unsigned long x = r_sstatus();
     x &= ~SSTATUS_SPP; // clear SPP to 0 for user mode
-    x |= SSTATUS_SPIE; // enable interrupts in user mode
+//    x |= SSTATUS_SPIE; // no interrupts for signal handler
     w_sstatus(x);
 
 
@@ -395,8 +388,8 @@ void delivery_signal(task_t * t, signal_t sig, signal_payload_t payload)
     // and switches to user mode with sret.
     // ??? Maybe calculating is more secure then keep it memory
 //    uint64_t trampoline_userret = kernel_map.userret;
-    uint64_t trampoline_usersignal = TRAMPOLINE + ((uint64_t)usersignal - (uint64_t)trampoline);
-
+//    uint64_t trampoline_usersignal = TRAMPOLINE + ((uint64_t)usersignal - (uint64_t)trampoline);
+    uint64_t trampoline_usersignal = TRAMPOLINE + ((uint64_t)userret - (uint64_t)trampoline);
 //    debug("[TRAP] trapoline user return address 0x%lX\n", trampoline_userret);
 
     ((void (*)(uint64_t, uint16_t))trampoline_usersignal)(satp, t->asid);

@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <errno.h>
+#include <sys/types.h>
 
 typedef uint32_t signal_t;
 typedef uint64_t signal_payload_t;
@@ -31,6 +32,7 @@ typedef struct signal_action
 
 
 kerrno_t signal_action(signal_t sig, signal_action_t *sa);
+kerrno_t signal_send(pid_t pid, signal_t sig, uint64_t payload);
 
 void __restore(void);
 

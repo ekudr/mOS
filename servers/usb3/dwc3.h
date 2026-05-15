@@ -678,7 +678,7 @@ typedef struct
 {
     void *base;
     clk_t *clk;  // host clock
-    clk_t *rst;  // Host reset
+    rst_t *rst;  // Host reset
     void *regs;     // Global registers
 
 	usb_phy_t		*usb2_phy;
@@ -812,5 +812,7 @@ static inline void dwc3_writel(void *base, uint32_t offset, uint32_t value)
 {
 	putreg32(value, (uint64_t)base + offset);
 }
+
+int hub_enable();
 
 #endif /* __DWC3_H__ */

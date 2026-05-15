@@ -43,9 +43,9 @@ kerrno_t irq_act(int irq, task_t *t, int flags)
 
 kerrno_t irq_send_signal(int irq)
 {
-//    debug("Active Task reurn 0x%lX\n", mytask());
+//    debug("Active Task return 0x%lX\n", mytask());
     irq_entry_t *e = khash_lookup(gp_irqm->irq_table, irq);
-//    debug("Task reurn 0x%lX for irq %d\n", t, irq);
+//    debug("Task return 0x%lX for irq %d\n", t, irq);
     
     if ((e == NULL) || (e->task == NULL))
         return -ENOENT;

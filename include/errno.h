@@ -17,6 +17,7 @@ typedef enum {
     ENOSUPPORT,
     ENOALIGN,
     EBUSY,
+    ERR_MAP_FAIL,
 } kerrno_t;
 
 

@@ -1,9 +1,10 @@
-# myOS
+# mOS
 
-I try to invent a wheel: a microkernel OS for RISC-V.
+I'm trying to invent a wheel: a microkernel(hibrid) OS for RISC-V.
 
+I just play with real HW and my unprofessional code.
 
-Can be build on board under Linux and Windows and Linux with crosstool.
+Can be built on board under Linux, Windows and Linux with crosstool.
 Copy to /boot/ and run from U-Boot. Or dowload form tftp.
 
 ## Supported boards
@@ -19,7 +20,7 @@ https://gist.github.com/cyyself/a07096e6e99c949ed13f8fa16d884402
 <br>
 
 ```
-meson setup build -Dboard=bpi-f3
+meson setup build -Dboard=bpi-f3 --cross-file=cross.txt
 ninja -C build
 ```
 
@@ -27,12 +28,12 @@ ninja -C build
 ### BPI-F3
 ```
 dhcp
-tftpboot 0x10000000 192.168.1.1:OSImage.bin
-go 0x10000000
+tftpboot 0x200000 192.168.1.1:img.bin
+go 0x200000
 ```
 ### VisionFive 2
 ```
 dhcp
-tftpboot 0x40200000 192.168.1.1:OSImage.bin
+tftpboot 0x40200000 192.168.1.1:img.bin
 go 0x40200000
 ```

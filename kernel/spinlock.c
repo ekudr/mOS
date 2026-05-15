@@ -84,8 +84,10 @@ acquire (spinlock_t *lk) {
 void 
 release(struct spinlock *lk)
 {
-    if(!holding(lk))
+    if(!holding(lk)) {
+        debug("[SPINLOCK] Lock %s release\n", lk->name);
         panic("[SPINLOCK] Lock release\n");
+    }
     lk->cpu = 0;
      uint16_t s = __atomic_load_n(&lk->c.now_serving, __ATOMIC_ACQUIRE);
     __atomic_store_n(&lk->c.now_serving, s+1, __ATOMIC_RELEASE);

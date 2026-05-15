@@ -1,11 +1,12 @@
 project(
     'mOS',
-    ['c'],
+    ['c', 'cpp'],
     version : '0.0.2',
     meson_version : '>= 1.1.0',
 )
 
 cc = meson.get_compiler('c')
+cxx = meson.get_compiler('cpp')
 
 objcopy = find_program('objcopy', required: true)
 py3 = find_program('python3', required: true)

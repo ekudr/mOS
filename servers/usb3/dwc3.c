@@ -1,6 +1,6 @@
-#include <common.h>
+#include <mosstd.h>
 #include <riscv.h>
-#include <libsys/memory.h>
+//#include <libsys/memory.h>
 #include <string.h>
 #include <libsys/cap.h>
 #include <signals.h>
@@ -8,8 +8,10 @@
 
 #include "dwc3.h"
 
-#define DWC3_BASE 0xC0A00000ULL
+#include "xhci.h"
 
+#define DWC3_BASE 0xC0A00000ULL
+#define COMBPHY_BASE 0xC0B10000ULL
 
 dwc3_dev_t k1x;
 usb_phy_t  usb2_phy;
@@ -91,11 +93,50 @@ debug("[USB3] HW MODE 0x%X\n", hw_mode);
 	return 0;
 }
 
+void dwc3_enable_susphy(dwc3_dev_t *dwc, bool enable)
+{
+	uint32_t reg;
+	int i;
+
+	for (i = 0; i < 1/*dwc->num_usb3_ports*/; i++) {
+		reg = dwc3_readl(dwc->base, DWC3_GUSB3PIPECTL(i));
+		if (enable && !dwc->dis_u3_susphy_quirk)
+			reg |= DWC3_GUSB3PIPECTL_SUSPHY;
+		else 
+			reg &= ~DWC3_GUSB3PIPECTL_SUSPHY;
+
+		dwc3_writel(dwc->base, DWC3_GUSB3PIPECTL(i), reg);
+	}
+
+	for (i = 0; i < 1/*dwc->num_usb2_ports*/; i++) {
+		reg = dwc3_readl(dwc->base, DWC3_GUSB2PHYCFG(i));
+		if (enable && !dwc->dis_u2_susphy_quirk)
+			reg |= DWC3_GUSB2PHYCFG_SUSPHY;
+		else
+			reg &= ~DWC3_GUSB2PHYCFG_SUSPHY;
+
+		dwc3_writel(dwc->base, DWC3_GUSB2PHYCFG(i), reg);
+	}
+}
+
 void dwc3_set_prtcap(dwc3_dev_t *dwc, uint32_t mode)
 {
 	uint32_t reg;
+	unsigned int hw_mode;
 
 	reg = dwc3_readl(dwc->base, DWC3_GCTL);
+
+	 /*
+	  * For DRD controllers, GUSB3PIPECTL.SUSPENDENABLE and
+	  * GUSB2PHYCFG.SUSPHY should be cleared during mode switching,
+	  * and they can be set after core initialization.
+	  */
+	hw_mode = DWC3_GHWPARAMS0_MODE(dwc->hwparams.hwparams0);
+	if (hw_mode == DWC3_GHWPARAMS0_MODE_DRD) {
+		if (DWC3_GCTL_PRTCAP(reg) != mode)
+			dwc3_enable_susphy(dwc, false);
+	}	
+
 	reg &= ~(DWC3_GCTL_PRTCAPDIR(DWC3_GCTL_PRTCAP_OTG));
 	reg |= DWC3_GCTL_PRTCAPDIR(mode);
 	dwc3_writel(dwc->base, DWC3_GCTL, reg);
@@ -221,8 +262,8 @@ int dwc3_core_soft_reset(dwc3_dev_t *dwc)
 	 * XHCI driver will reset the host block. If dwc3 was configured for
 	 * host-only mode, then we can return early.
 	 */
-	// if (dwc->current_dr_role == DWC3_GCTL_PRTCAP_HOST)
-	// 	return 0;
+	 if (dwc->current_dr_role == DWC3_GCTL_PRTCAP_HOST)
+	 	return 0;
 
 	reg = dwc3_readl(dwc->base, DWC3_DCTL);
 	reg |= DWC3_DCTL_CSFTRST;
@@ -239,11 +280,23 @@ int dwc3_core_soft_reset(dwc3_dev_t *dwc)
     reg &= ~DWC3_DCTL_ULSTCHNGREQ_MASK;
 	dwc3_writel(dwc->base, DWC3_DCTL, reg);
 
+	/*
+	 * For DWC_usb31 controller 1.90a and later, the DCTL.CSFRST bit
+	 * is cleared only after all the clocks are synchronized. This can
+	 * take a little more than 50ms. Set the polling rate at 20ms
+	 * for 10 times instead.
+	 */
+	if (DWC3_VER_IS_WITHIN(DWC31, 190A, ANY) || DWC3_IP_IS(DWC32))
+		retries = 10;	
+
 	do {
 		reg = dwc3_readl(dwc->base, DWC3_DCTL);
 		if (!(reg & DWC3_DCTL_CSFTRST))
 			goto done;
 
+		if (DWC3_VER_IS_WITHIN(DWC31, 190A, ANY) || DWC3_IP_IS(DWC32))
+			udelay(20000);
+		else
 		udelay(1);
 	} while (--retries);
 
@@ -251,19 +304,30 @@ int dwc3_core_soft_reset(dwc3_dev_t *dwc)
 	return -ETIMEOUT;
 
 done:
-
+	/*
+	 * For DWC_usb31 controller 1.80a and prior, once DCTL.CSFRST bit
+	 * is cleared, we must wait at least 50ms before accessing the PHY
+	 * domain (synchronization delay).
+	 */
+	if (DWC3_VER_IS_WITHIN(DWC31, ANY, 180A))
+		udelay(50000);
 	return 0;
 }
 
 static void dwc3_core_setup_global_control(dwc3_dev_t *dwc)
 {
 	uint32_t hwparams4 = dwc->hwparams.hwparams4;
+	unsigned int power_opt;
+	unsigned int hw_mode;
 	uint32_t reg;
 
 	reg = dwc3_readl(dwc->base, DWC3_GCTL);
 	reg &= ~DWC3_GCTL_SCALEDOWN_MASK;
-    debug("[USB3] HIBERNATION 0x%X \n", DWC3_GHWPARAMS1_EN_PWROPT(dwc->hwparams.hwparams1));
-	switch (DWC3_GHWPARAMS1_EN_PWROPT(dwc->hwparams.hwparams1)) {
+
+	hw_mode = DWC3_GHWPARAMS0_MODE(dwc->hwparams.hwparams0);
+	power_opt = DWC3_GHWPARAMS1_EN_PWROPT(dwc->hwparams.hwparams1);
+
+	switch (power_opt) {
 	case DWC3_GHWPARAMS1_EN_PWROPT_CLK:
 		/**
 		 * WORKAROUND: DWC3 revisions between 2.10a and 2.50a have an
@@ -299,13 +363,20 @@ static void dwc3_core_setup_global_control(dwc3_dev_t *dwc)
 		break;
 	}
 
+
 	/* check if current dwc3 is on simulation board */
 	if (dwc->hwparams.hwparams6 & DWC3_GHWPARAMS6_EN_FPGA) {
 		debug("[USB3] Running with FPGA optimizations\n");
 //		dwc->is_fpga = true;
 	}
 
-	reg &= ~DWC3_GCTL_DISSCRAMBLE;
+	if (dwc->disable_scramble_quirk && dwc->is_fpga)
+		reg |= DWC3_GCTL_DISSCRAMBLE;
+	else
+		reg &= ~DWC3_GCTL_DISSCRAMBLE;
+
+	if (dwc->u2exit_lfps_quirk)
+		reg |= DWC3_GCTL_U2EXIT_LFPS;
 
 	/*
 	 * WORKAROUND: DWC3 revisions <1.90a have a bug
@@ -324,6 +395,20 @@ static int dwc3_phy_setup(dwc3_dev_t *dwc)
 	uint32_t hw_mode;
 	uint32_t reg;
 
+	// soft reset the PHYs
+	reg = dwc3_readl(dwc->base, DWC3_GUSB3PIPECTL(0));
+	reg |= DWC3_GUSB3PIPECTL_PHYSOFTRST;
+	dwc3_writel(dwc->base, DWC3_GUSB3PIPECTL(0), reg);
+	udelay(100);
+	reg &= ~DWC3_GUSB3PIPECTL_PHYSOFTRST;
+	dwc3_writel(dwc->base, DWC3_GUSB3PIPECTL(0), reg);
+
+	while (dwc3_readl(dwc->base, DWC3_GUSB3PIPECTL(0)) &
+	       DWC3_GUSB3PIPECTL_PHYSOFTRST)
+	{
+		udelay(10);
+	}
+	
 	hw_mode = DWC3_GHWPARAMS0_MODE(dwc->hwparams.hwparams0);
 
 	reg = dwc3_readl(dwc->base, DWC3_GUSB3PIPECTL(0));
@@ -339,39 +424,90 @@ static int dwc3_phy_setup(dwc3_dev_t *dwc)
 	 * power-on reset, and it can be set after core initialization, which is
 	 * after device soft-reset during initialization.
 	 */
+
 	if (hw_mode == DWC3_GHWPARAMS0_MODE_DRD)
 		reg &= ~DWC3_GUSB3PIPECTL_SUSPHY;
-        
-    	dwc3_writel(dwc->base, DWC3_GUSB3PIPECTL(0), reg);
+    
+	if (dwc->u2ss_inp3_quirk)
+		reg |= DWC3_GUSB3PIPECTL_U2SSINP3OK;
 
-// 	reg = dwc3_readl(dwc->base, DWC3_GUSB2PHYCFG(0));
+	if (dwc->dis_rxdet_inp3_quirk)
+		reg |= DWC3_GUSB3PIPECTL_DISRXDETINP3;
 
-//     /* Select the HS PHY interface */
-// 	switch (DWC3_GHWPARAMS3_HSPHY_IFC(dwc->hwparams.hwparams3)) {
-// 	case DWC3_GHWPARAMS3_HSPHY_IFC_UTMI_ULPI:
-//     debug("[USB2] HS PHY UTMI ULPI\n");
-// 		// if (dwc->hsphy_interface &&
-// 		// 		!strncmp(dwc->hsphy_interface, "utmi", 4)) {
-// 		// 	reg &= ~DWC3_GUSB2PHYCFG_ULPI_UTMI;
-// 		// 	break;
-// 		// } else if (dwc->hsphy_interface &&
-// 		// 		!strncmp(dwc->hsphy_interface, "ulpi", 4)) {
-// 		// 	reg |= DWC3_GUSB2PHYCFG_ULPI_UTMI;
-// 		// 	dwc3_writel(dwc->regs, DWC3_GUSB2PHYCFG(0), reg);
-// 		// } else {
-// 		// 	/* Relying on default value. */
-// 		// 	if (!(reg & DWC3_GUSB2PHYCFG_ULPI_UTMI))
-// 		// 		break;
-// 		// }
+	if (dwc->req_p1p2p3_quirk)
+		reg |= DWC3_GUSB3PIPECTL_REQP1P2P3;
+
+	if (dwc->del_p1p2p3_quirk)
+		reg |= DWC3_GUSB3PIPECTL_DEP1P2P3_EN;
+
+	if (dwc->del_phy_power_chg_quirk)
+		reg |= DWC3_GUSB3PIPECTL_DEPOCHANGE;
+
+	if (dwc->lfps_filter_quirk)
+		reg |= DWC3_GUSB3PIPECTL_LFPSFILT;
+
+	if (dwc->rx_detect_poll_quirk)
+		reg |= DWC3_GUSB3PIPECTL_RX_DETOPOLL;
+
+	if (dwc->tx_de_emphasis_quirk)
+		reg |= DWC3_GUSB3PIPECTL_TX_DEEPH(dwc->tx_de_emphasis);
+
+	if (dwc->dis_del_phy_power_chg_quirk)
+		reg &= ~DWC3_GUSB3PIPECTL_DEPOCHANGE;  
+
+    dwc3_writel(dwc->base, DWC3_GUSB3PIPECTL(0), reg);
+
+ 	reg = dwc3_readl(dwc->base, DWC3_GUSB2PHYCFG(0));
+
+    /* Select the HS PHY interface */
+	// switch (DWC3_GHWPARAMS3_HSPHY_IFC(dwc->hwparams.hwparams3)) {
+	// case DWC3_GHWPARAMS3_HSPHY_IFC_UTMI_ULPI:
+    // debug("[USB2] HS PHY UTMI ULPI\n");
+	// 	if (dwc->hsphy_interface &&
+	// 			!strncmp(dwc->hsphy_interface, "utmi", 4)) {
+	//
+// 			break;
+// 		} else if (dwc->hsphy_interface &&
+// 				!strncmp(dwc->hsphy_interface, "ulpi", 4)) {
+// 			reg |= DWC3_GUSB2PHYCFG_ULPI_UTMI;
+// 			dwc3_writel(dwc->regs, DWC3_GUSB2PHYCFG(0), reg);
+// 		} else {
+// 			/* Relying on default value. */
+// 			if (!(reg & DWC3_GUSB2PHYCFG_ULPI_UTMI))
+// 				break;
+// 		}
 // //		fallthrough;
 // 	case DWC3_GHWPARAMS3_HSPHY_IFC_ULPI:
 // 	default:
 // 		break;
 // 	}
+// 	switch (dwc->hsphy_mode) {
+// 	case USBPHY_INTERFACE_MODE_UTMI:
+		// reg &= ~(DWC3_GUSB2PHYCFG_PHYIF_MASK |
+		//        DWC3_GUSB2PHYCFG_USBTRDTIM_MASK);
+		// reg |= DWC3_GUSB2PHYCFG_PHYIF(UTMI_PHYIF_8_BIT) |
+		//        DWC3_GUSB2PHYCFG_USBTRDTIM(USBTRDTIM_UTMI_8_BIT);
+		// break;
+	// case USBPHY_INTERFACE_MODE_UTMIW:
+	// 	reg &= ~(DWC3_GUSB2PHYCFG_PHYIF_MASK |
+	// 	       DWC3_GUSB2PHYCFG_USBTRDTIM_MASK);
+	// 	reg |= DWC3_GUSB2PHYCFG_PHYIF(UTMI_PHYIF_16_BIT) |
+	// 	       DWC3_GUSB2PHYCFG_USBTRDTIM(USBTRDTIM_UTMI_16_BIT);
+	// 	break;
+	// default:
+	// 	break;
+	// }
 
 	if (hw_mode == DWC3_GHWPARAMS0_MODE_DRD)
 		reg &= ~DWC3_GUSB2PHYCFG_SUSPHY;
 
+	if (dwc->dis_enblslpm_quirk)
+		reg &= ~DWC3_GUSB2PHYCFG_ENBLSLPM;
+	else
+		reg |= DWC3_GUSB2PHYCFG_ENBLSLPM;
+
+	if (dwc->dis_u2_freeclk_exists_quirk || dwc->gfladj_refclk_lpm_sel)
+		reg &= ~DWC3_GUSB2PHYCFG_U2_FREECLK_EXISTS;
     
     dwc3_writel(dwc->base, DWC3_GUSB2PHYCFG(0), reg);
 
@@ -490,7 +626,7 @@ static int dwc3_core_init(dwc3_dev_t *dwc)
 	// }
 
 	usb_phy_init(dwc->usb2_phy);
-//	usb_phy_init(dwc->usb3_phy);
+	combphy_init(dwc->usb3_phy);
 
 	ret = dwc3_core_soft_reset(dwc);
 	if (ret)
@@ -538,6 +674,7 @@ static int dwc3_core_init(dwc3_dev_t *dwc)
 		dwc3_writel(dwc->base, DWC3_GUCTL2, reg);
 	}
 
+
     if (!DWC3_VER_IS_PRIOR(DWC3, 250A)) {
 		reg = dwc3_readl(dwc->base, DWC3_GUCTL1);
 
@@ -562,12 +699,15 @@ static int dwc3_core_init(dwc3_dev_t *dwc)
 
 		if (dwc->parkmode_disable_ss_quirk)
 			reg |= DWC3_GUCTL1_PARKMODE_DISABLE_SS;
+			
 
-		if (DWC3_VER_IS_WITHIN(DWC3, 290A, ANY) &&
-		    (dwc->maximum_speed == USB_SPEED_HIGH ||
-		     dwc->maximum_speed == USB_SPEED_FULL))
-			reg |= DWC3_GUCTL1_DEV_FORCE_20_CLK_FOR_30_CLK;
-
+		if (DWC3_VER_IS_WITHIN(DWC3, 290A, ANY)) {
+			if (dwc->maximum_speed == USB_SPEED_FULL ||
+			    dwc->maximum_speed == USB_SPEED_HIGH)
+				reg |= DWC3_GUCTL1_DEV_FORCE_20_CLK_FOR_30_CLK;
+			else
+				reg &= ~DWC3_GUCTL1_DEV_FORCE_20_CLK_FOR_30_CLK;
+			}
 		dwc3_writel(dwc->base, DWC3_GUCTL1, reg);
 	}
 
@@ -586,43 +726,43 @@ static int dwc3_core_init(dwc3_dev_t *dwc)
 
 		dwc3_writel(dwc->base, DWC3_GUCTL, reg);
 	}
-
+	
     	/*
 	 * Must config both number of packets and max burst settings to enable
 	 * RX and/or TX threshold.
 	 */
-	// if (!DWC3_IP_IS(DWC3) && dwc->dr_mode == USB_DR_MODE_HOST) {
-	// 	u8 rx_thr_num = dwc->rx_thr_num_pkt_prd;
-	// 	u8 rx_maxburst = dwc->rx_max_burst_prd;
-	// 	u8 tx_thr_num = dwc->tx_thr_num_pkt_prd;
-	// 	u8 tx_maxburst = dwc->tx_max_burst_prd;
+	if (!DWC3_IP_IS(DWC3) && dwc->dr_mode == USB_DR_MODE_HOST) {
+		u8 rx_thr_num = 0; // dwc->rx_thr_num_pkt_prd;
+		u8 rx_maxburst = 0; //dwc->rx_max_burst_prd;
+		u8 tx_thr_num = 0; //dwc->tx_thr_num_pkt_prd;
+		u8 tx_maxburst = 0; //dwc->tx_max_burst_prd;
 
-	// 	if (rx_thr_num && rx_maxburst) {
-	// 		reg = dwc3_readl(dwc->base, DWC3_GRXTHRCFG);
-	// 		reg |= DWC31_RXTHRNUMPKTSEL_PRD;
+		if (rx_thr_num && rx_maxburst) {
+			reg = dwc3_readl(dwc->base, DWC3_GRXTHRCFG);
+			reg |= DWC31_RXTHRNUMPKTSEL_PRD;
 
-	// 		reg &= ~DWC31_RXTHRNUMPKT_PRD(~0);
-	// 		reg |= DWC31_RXTHRNUMPKT_PRD(rx_thr_num);
+			reg &= ~DWC31_RXTHRNUMPKT_PRD(~0);
+			reg |= DWC31_RXTHRNUMPKT_PRD(rx_thr_num);
 
-	// 		reg &= ~DWC31_MAXRXBURSTSIZE_PRD(~0);
-	// 		reg |= DWC31_MAXRXBURSTSIZE_PRD(rx_maxburst);
+			reg &= ~DWC31_MAXRXBURSTSIZE_PRD(~0);
+			reg |= DWC31_MAXRXBURSTSIZE_PRD(rx_maxburst);
 
-	// 		dwc3_writel(dwc->base, DWC3_GRXTHRCFG, reg);
-	// 	}
+			dwc3_writel(dwc->base, DWC3_GRXTHRCFG, reg);
+		}
 
-	// 	if (tx_thr_num && tx_maxburst) {
-	// 		reg = dwc3_readl(dwc->base, DWC3_GTXTHRCFG);
-	// 		reg |= DWC31_TXTHRNUMPKTSEL_PRD;
+		if (tx_thr_num && tx_maxburst) {
+			reg = dwc3_readl(dwc->base, DWC3_GTXTHRCFG);
+			reg |= DWC31_TXTHRNUMPKTSEL_PRD;
 
-	// 		reg &= ~DWC31_TXTHRNUMPKT_PRD(~0);
-	// 		reg |= DWC31_TXTHRNUMPKT_PRD(tx_thr_num);
+			reg &= ~DWC31_TXTHRNUMPKT_PRD(~0);
+			reg |= DWC31_TXTHRNUMPKT_PRD(tx_thr_num);
 
-	// 		reg &= ~DWC31_MAXTXBURSTSIZE_PRD(~0);
-	// 		reg |= DWC31_MAXTXBURSTSIZE_PRD(tx_maxburst);
+			reg &= ~DWC31_MAXTXBURSTSIZE_PRD(~0);
+			reg |= DWC31_MAXTXBURSTSIZE_PRD(tx_maxburst);
 
-	// 		dwc3_writel(dwc->base, DWC3_GTXTHRCFG, reg);
-	// 	}
-	// }
+			dwc3_writel(dwc->base, DWC3_GTXTHRCFG, reg);
+		}
+	}
 
     return SUCCESS;
 err1:
@@ -742,6 +882,7 @@ static void dwc3_check_params(dwc3_dev_t *dwc)
 	// }
 }
 
+
 static int dwc3_core_init_mode(dwc3_dev_t *dwc)
 {
 //	struct device *dev = dwc->dev;
@@ -768,10 +909,9 @@ static int dwc3_core_init_mode(dwc3_dev_t *dwc)
 		// phy_set_mode(dwc->usb2_generic_phy, PHY_MODE_USB_HOST);
 		// phy_set_mode(dwc->usb3_generic_phy, PHY_MODE_USB_HOST);
         debug("[USB3] Init host mode\n");
-		// ret = dwc3_host_init(dwc);
-		// if (ret)
-		// 	return dev_err_probe(dev, ret, "failed to initialize host\n");
-		break;
+			ret = xhci_init(k1x.base, k1x.irq);
+			if (ret < 0) return ret;
+				break;
 	case USB_DR_MODE_OTG:
     debug("[USB3] Init dual-role mode\n");
 		// INIT_WORK(&dwc->drd_work, __dwc3_set_mode);
@@ -787,6 +927,68 @@ static int dwc3_core_init_mode(dwc3_dev_t *dwc)
 	return 0;
 }
 
+static void dwc3_regs_dump(dwc3_dev_t *dwc)
+{
+	debug("[XHCI] DWC3_GSBUSCFG0 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GSBUSCFG0));
+	debug("[XHCI] DWC3_GSBUSCFG1 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GSBUSCFG1));
+	debug("[XHCI] DWC3_GTXTHRCFG = 0x%X\n", dwc3_readl(dwc->base, DWC3_GTXTHRCFG));
+	debug("[XHCI] DWC3_GRXTHRCFG = 0x%X\n", dwc3_readl(dwc->base, DWC3_GRXTHRCFG));
+	debug("[XHCI] DWC3_GCTL = 0x%X\n", dwc3_readl(dwc->base, DWC3_GCTL));
+	debug("[XHCI] DWC3_GEVTEN = 0x%X\n", dwc3_readl(dwc->base, DWC3_GEVTEN));
+	debug("[XHCI] DWC3_GSTS = 0x%X\n", dwc3_readl(dwc->base, DWC3_GSTS));
+	debug("[XHCI] DWC3_GUCTL1 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GUCTL1));
+	debug("[XHCI] DWC3_GSNPSID = 0x%X\n", dwc3_readl(dwc->base, DWC3_GSNPSID));
+	debug("[XHCI] DWC3_GGPIO = 0x%X\n", dwc3_readl(dwc->base, DWC3_GGPIO));
+	debug("[XHCI] DWC3_GUID = 0x%X\n", dwc3_readl(dwc->base, DWC3_GUID));
+	debug("[XHCI] DWC3_GUCTL = 0x%X\n", dwc3_readl(dwc->base, DWC3_GUCTL));
+	debug("[XHCI] DWC3_GBUSERRADDR0 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GBUSERRADDR0));
+	debug("[XHCI] DWC3_GBUSERRADDR1 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GBUSERRADDR1));
+	debug("[XHCI] DWC3_GPRTBIMAP0 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GPRTBIMAP0));
+	debug("[XHCI] DWC3_GPRTBIMAP1 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GPRTBIMAP1));
+	debug("[XHCI] DWC3_GHWPARAMS0 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GHWPARAMS0));
+	debug("[XHCI] DWC3_GHWPARAMS1 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GHWPARAMS1));
+	debug("[XHCI] DWC3_GHWPARAMS2 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GHWPARAMS2));
+	debug("[XHCI] DWC3_GHWPARAMS3 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GHWPARAMS3));
+	debug("[XHCI] DWC3_GHWPARAMS4 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GHWPARAMS4));
+	debug("[XHCI] DWC3_GHWPARAMS5 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GHWPARAMS5));
+	debug("[XHCI] DWC3_GHWPARAMS6 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GHWPARAMS6));
+	debug("[XHCI] DWC3_GHWPARAMS7 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GHWPARAMS7));
+	debug("[XHCI] DWC3_GDBGFIFOSPACE = 0x%X\n", dwc3_readl(dwc->base, DWC3_GDBGFIFOSPACE));
+	debug("[XHCI] DWC3_GDBGLTSSM = 0x%X\n", dwc3_readl(dwc->base, DWC3_GDBGLTSSM));
+	debug("[XHCI] DWC3_GDBGBMU = 0x%X\n", dwc3_readl(dwc->base, DWC3_GDBGBMU));
+	debug("[XHCI] DWC3_GDBGLSPMUX = 0x%X\n", dwc3_readl(dwc->base, DWC3_GDBGLSPMUX));
+	debug("[XHCI] DWC3_GDBGLSP = 0x%X\n", dwc3_readl(dwc->base, DWC3_GDBGLSP));
+	debug("[XHCI] DWC3_GDBGEPINFO0 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GDBGEPINFO0));
+	debug("[XHCI] DWC3_GDBGEPINFO1 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GDBGEPINFO1));
+	debug("[XHCI] DWC3_GPRTBIMAP_HS0 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GPRTBIMAP_HS0));
+	debug("[XHCI] DWC3_GPRTBIMAP_HS1 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GPRTBIMAP_HS1));
+	debug("[XHCI] DWC3_GPRTBIMAP_FS0 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GPRTBIMAP_FS0));
+	debug("[XHCI] DWC3_GPRTBIMAP_FS1 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GPRTBIMAP_FS1));
+	debug("[XHCI] DWC3_GUCTL2 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GUCTL2));
+	debug("[XHCI] DWC3_VER_NUMBER = 0x%X\n", dwc3_readl(dwc->base, DWC3_VER_NUMBER));
+	debug("[XHCI] DWC3_VER_TYPE = 0x%X\n", dwc3_readl(dwc->base, DWC3_VER_TYPE));
+	debug("[XHCI] DWC3_GUSB2PHYCFG(0) = 0x%X\n", dwc3_readl(dwc->base, DWC3_GUSB2PHYCFG(0)));
+	debug("[XHCI] DWC3_GUSB2I2CCTL(0) = 0x%X\n", dwc3_readl(dwc->base, DWC3_GUSB2I2CCTL(0)));
+	debug("[XHCI] DWC3_GUSB2PHYACC(0) = 0x%X\n", dwc3_readl(dwc->base, DWC3_GUSB2PHYACC(0)));
+	debug("[XHCI] DWC3_GUSB3PIPECTL(0) = 0x%X\n", dwc3_readl(dwc->base, DWC3_GUSB3PIPECTL(0)));
+	debug("[XHCI] DWC3_GHWPARAMS8 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GHWPARAMS8));
+	debug("[XHCI] DWC3_GUCTL3 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GUCTL3));
+	debug("[XHCI] DWC3_GFLADJ = 0x%X\n", dwc3_readl(dwc->base, DWC3_GFLADJ));
+	debug("[XHCI] DWC3_GHWPARAMS9 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GHWPARAMS9));
+
+	debug("[XHCI] DWC3_DCFG = 0x%X\n", dwc3_readl(dwc->base, DWC3_DCFG));
+	debug("[XHCI] DWC3_DCTL = 0x%X\n", dwc3_readl(dwc->base, DWC3_DCTL));
+	debug("[XHCI] DWC3_DEVTEN = 0x%X\n", dwc3_readl(dwc->base, DWC3_DEVTEN));
+	debug("[XHCI] DWC3_DSTS = 0x%X\n", dwc3_readl(dwc->base, DWC3_DSTS));
+	debug("[XHCI] DWC3_DGCMDPAR = 0x%X\n", dwc3_readl(dwc->base, DWC3_DGCMDPAR));
+	debug("[XHCI] DWC3_DGCMD = 0x%X\n", dwc3_readl(dwc->base, DWC3_DGCMD));
+	debug("[XHCI] DWC3_DALEPENA = 0x%X\n", dwc3_readl(dwc->base, DWC3_DALEPENA));
+	if (DWC3_IP_IS(DWC32))
+		debug("[XHCI] DWC3_DCFG1 = 0x%X\n", dwc3_readl(dwc->base, DWC3_DCFG1));
+}
+
+
+
 int usb3_init()
 {
     memset(&k1x, 0, sizeof(k1x));
@@ -798,7 +1000,20 @@ int usb3_init()
 
     k1x.irq = 125; // 149 additional usb3_vbus_id_wakeup
 
+	k1x.dr_mode = USB_DR_MODE_HOST;
+//		phy_type = "utmi";
+//	k1x.hsphy_interface = "utmi";
+	k1x.dis_enblslpm_quirk = 1;
+	k1x.dis_u2_susphy_quirk = 1;
+	k1x.dis_u3_susphy_quirk = 1;
+	k1x.dis_del_phy_power_chg_quirk = 1;
+	k1x.dis_tx_ipgap_linecheck_quirk = 1;
+	k1x.parkmode_disable_ss_quirk = 1;
+	k1x.dis_rxdet_inp3_quirk = 1;
+//	k1x.snps_xhci_trb_ent_quirk = 1;
+
     ccu_init();
+
     
     k1x.clk = get_clk_by_id(CLK_USB30);
     if (!k1x.clk) return -EINVAL;
@@ -813,27 +1028,26 @@ int usb3_init()
 
     k1x.usb2_phy = &usb2_phy;
 
+	usb3_phy.base = mmap(NULL, 0x1000, MAP_MEMIO | MAP_READ | MAP_WRITE, (void *)COMBPHY_BASE);
+	usb3_phy.rst = get_reset_by_id(RESET_PCIE0);
+	if (!usb3_phy.rst) return -EINVAL;
+	k1x.usb3_phy = &usb3_phy;
+
 
     clock_enable(k1x.clk);    
-//    udelay(50);   
-//    reset_assert(k1x.rst);
+    udelay(50);  
     reset_deassert(k1x.rst);
-    udelay(50);
-//    k1x.regs = k1x.base + DWC3_GLOBALS_REGS_START;
+
+    udelay(50);	
+    k1x.regs = k1x.base;
 
     if (!dwc3_core_is_valid(&k1x))
         return -ENOSUPPORT;
 
     dwc3_cache_hwparams(&k1x);
 
-    // allocate event buffer
-    // ----
-
     // DRD mode
     dwc3_get_dr_mode(&k1x);
-
-    // allocate scratch buffer
-    // -------
 
     int ret = dwc3_core_init(&k1x);
     if (ret < 0) return ret;
@@ -842,7 +1056,10 @@ int usb3_init()
 
     dwc3_core_init_mode(&k1x);
 
+//	dwc3_regs_dump(&k1x);
 
-    uint32_t hdr = getreg32((uint64_t)k1x.base);
-    debug("[USB3] xHCI cap regs 0x%X\n", hdr);
+
+//	dwc3_regs_dump(&k1x);
+
+	return SUCCESS;
 }

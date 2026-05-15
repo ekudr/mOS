@@ -23,7 +23,7 @@ struct kernel_map
     uint64_t uservec;       // Trampoline user vector mapped address
     uint64_t userret;       // Trampoline user return mapped address
     bool     sparsemem;
-    uint64_t nmemblocks;
+    uint64_t nmemblocks;    // Num memory blocks in board_memmap
     uint64_t pgmap_base;
     uint64_t pgmap_size;
     uint64_t asid_max;
@@ -61,9 +61,14 @@ struct vmem_mgr
     uintptr_t vmemmap_top;  // slub map top. grow up
     uintptr_t malloc_top;   // top malloc heap. grow up
     uintptr_t kstack_top;  // top of kernel stacks. grow down
+    uintptr_t cma_mem_start;   // Start physical cma
+    uintptr_t cma_mem_end;      // End physical cma
+    uintptr_t cma_mem_top;      // Top allocated physical cma
 
 };
 typedef struct vmem_mgr vmem_mgr_t;
+
+extern vmem_mgr_t *gp_vmmgr;
 
 struct kmem_slub {
     kmem_cache_t *slub_cache;
@@ -175,6 +180,7 @@ enum mtype{
     MEMORY,
     MEM_EXT,
     FRMBUF,
+    MEM_CMA,
 
 };
 
@@ -293,6 +299,7 @@ enum{
 void vm_init(void);
 void vmem_init(void);
 void kmem_init(void);
+uint64_t kmem_cma_alloc(size_t size);
 
 int mmu_map_pages(pagetable_t pagetable, uint64_t va, uint64_t size, uint64_t pa, int perm) ;
 

@@ -29,6 +29,11 @@ __attribute__((noreturn)) void exit(int status)
 //     return __syscall(SYS_get_msg, qkey, flags);
 // }
 
+int sys_wait_irq(void)
+{
+    return __syscall(SYS_wait);
+}
+
 int sys_debug(char *msg)
 {
     return __syscall(SYS_debug, (uint64_t)msg);
@@ -44,9 +49,14 @@ void *mmap(void *addr, uint64_t len, uint64_t flags, void *paddr)
     return (void *)__syscall(SYS_mmap,  (uint64_t)addr,(uint64_t)len, (uint64_t)flags, (uint64_t)paddr);
 }
 
-int cash_flash(void *addr, size_t size)
+int cache_flush(void *addr, size_t size)
 {
     return (int) __syscall(SYS_cache_flush, (uint64_t)addr, (uint64_t)size);
+}
+
+int cache_invalidate(void *addr, size_t size)
+{
+    return (int) __syscall(SYS_cache_inval, (uint64_t)addr, (uint64_t)size);
 }
 
 kerrno_t irq_set(uint64_t irq, uint64_t flags)

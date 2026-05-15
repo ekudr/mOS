@@ -9,10 +9,11 @@
 
 #ifdef __BOARD_MEMMAP__
 struct board_mmap board_memmap[] = {
-    {0x0, 0x7F6FFFFF, MEMORY},
-    {0x7F700000, 0x7FFFFFFF, FRMBUF},
-    {0x80000000, 0xFFFFFFFF, MEM_IO},    
-    {0x100000000, 0x17FFFFFFF, MEM_EXT},
+    { .base = 0x0, .top = 0x676FFFFF, .type = MEMORY},
+    { .base = 0x67700000, .top = 0x7F6FFFFF, .type = MEM_CMA},
+    { .base = 0x7F700000, .top = 0x7FFFFFFF, .type = FRMBUF},
+    { .base = 0x80000000, .top = 0xFFFFFFFF, .type = MEM_IO},    
+    { .base = 0x100000000, .top = 0x17FFFFFFF, .type = MEM_EXT},
     
 };
 #endif

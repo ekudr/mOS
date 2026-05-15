@@ -30,10 +30,11 @@ typedef struct usb_phy
 {
     void *base;
     clk_t *clk;
-
+    rst_t *rst;
 } usb_phy_t;
 
 
 int usb_phy_init(usb_phy_t *phy);
+int combphy_init(usb_phy_t *phy);
 
 #endif /* __PHY_H__ */

@@ -128,6 +128,7 @@ syscall_argaddr(int n, uint64_t *ip)
 // to the function that handles the system call.
 static uint64_t (*syscalls[])(void) = {
     [SYS_yield]     = __sys_yield,
+    [SYS_wait]  = __sys_wait_irq,
 //    [SYS_fork]      =  sys_fork,
     [SYS_exit]      =  sys_exit,
 //    [SYS_exec]      =  sys_exec,
@@ -135,6 +136,7 @@ static uint64_t (*syscalls[])(void) = {
     [SYS_debug]     =  sys_debug,
     [SYS_mmap]      =  sys_mmap,
     [SYS_cache_flush] = __sys_cache_flush,
+    [SYS_cache_inval] = __sys_cache_inval,
 //    [SYS_sbrk]      =  sys_sbrk,
     [SYS_recv]      =  __sys_recv,
     [SYS_nb_recv]   =  __sys_nb_recv,
@@ -170,9 +172,7 @@ syscall(void)
     struct task *t = mytask();
 
     num = t->trapframe->a7;
-    //    debug("SYSCALL %d handler 0x%lX\n", num, syscalls[num]);
 
-    
       if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
         // Use num to lookup the system call function for num, call it,
         // and store its return value in p->trapframe->a0

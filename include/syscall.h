@@ -30,6 +30,7 @@
 #define SYS_debug   22
 #define SYS_mmap    23
 #define SYS_cache_flush 24
+#define SYS_cache_inval 25
 
 #define SYS_recv    30
 #define SYS_nb_recv 31

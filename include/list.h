@@ -4,6 +4,16 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#define READ_ONCE(x) \
+({							\
+	*(const volatile typeof(x) *)&(x);		\
+})
+
+#define WRITE_ONCE(x, val) \
+({							\
+	*(volatile typeof(x) *)&(x) = (val);		\
+})
+
 #define container_of(ptr, type, member) \
   ((type *)((uintptr_t)(ptr) - offsetof(type, member)))
 
@@ -16,24 +26,12 @@ typedef struct list_head list_head_t;
 
 static inline void list_init(list_head_t *list)
 {
-    list->next = list;
-    list->prev = list;
+    WRITE_ONCE(list->next, list);
+    WRITE_ONCE(list->prev, list);
 }
 
-static inline int list_is_empty(list_head_t *list)
-{
-	return list->next == list;
-}
 
-/*
-static inline void list_add(list_head_t *list, list_head_t *item)
-{
-    list->next->prev = item;
-	item->next = list->next;
-	item->prev = list;
-	list->next = item;
-}
-*/
+
 
 static inline void 
 __list_add(list_head_t *new, list_head_t *prev, list_head_t *next)
@@ -44,7 +42,7 @@ __list_add(list_head_t *new, list_head_t *prev, list_head_t *next)
 	next->prev = new;
 	new->next = next;
 	new->prev = prev;
-	prev->next = new;
+	WRITE_ONCE(prev->next, new);
 }
 
 
@@ -64,15 +62,29 @@ list_add_tail(list_head_t *head, list_head_t *new)
 static inline void list_del(list_head_t *item)
 {
     item->next->prev = item->prev;
-	item->prev->next = item->next;
+	WRITE_ONCE(item->prev->next, item->next);
 	item->next = NULL;
 	item->prev = NULL;
 }
 
+static inline int list_is_first(const list_head_t *list, const list_head_t *head)
+{
+	return list->prev == head;
+}
+
+static inline int list_is_last(const list_head_t *list, const list_head_t *head)
+{
+	return list->next == head;
+}
 
 static inline int list_is_head(list_head_t *list, list_head_t *head)
 {
 	return list == head;
+}
+
+static inline int list_is_empty(list_head_t *list)
+{
+	return READ_ONCE(list->next) == list;
 }
 
 #define list_entry(ptr, type, member) container_of(ptr, type, member)
@@ -108,6 +120,10 @@ static inline int list_is_head(list_head_t *list, list_head_t *head)
 	     !list_entry_is_head(pos, head, member); 			\
 	     pos = list_prev_entry(pos, member))
 
+#define list_for_each_safe(pos, n, head) \
+	for (pos = (head)->next, n = pos->next; \
+	     !list_is_head(pos, (head)); \
+	     pos = n, n = pos->next)
         
 static inline uint64_t list_count_nodes(list_head_t *list)
 {

@@ -13,6 +13,8 @@ int syscall_fetchstr(uint64 addr, char *buf, int max);
 uint64_t syscall_get_MR(struct task *t, int n);
 void syscall_set_MR(struct task *t, int n, uint64_t val);
 
+uint64_t __sys_wait_irq(void);
+
 uint64_t __sys_yield(void);
 uint64_t sys_fork(void);
 uint64_t sys_exit(void);
@@ -45,5 +47,6 @@ uint64_t __sys_cap_free(void);
 uint64_t sys_fast_call(void);
 uint64_t __sys_task_control(void);
 uint64_t __sys_cache_flush(void);
+uint64_t __sys_cache_inval(void);
 
 #endif /* __SYSPROC_H__ */

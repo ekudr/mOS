@@ -1,7 +1,7 @@
-#include <common.h>
+#include <mosstd.h>
 #include <riscv.h>
-#include <libsys/memory.h>
-#include <memory.h>
+//#include <libsys/memory.h>
+//#include <memory.h>
 
 #include "k1x.h"
 
@@ -11,25 +11,34 @@ void *apmu_base;
 static CLOCK_GATE(usb_axi_clk, &apmu_base, APMU_USB_CLK_RST_CTRL, USB_AXI_CLK);
 static CLOCK_GATE(usb_p1_clk, &apmu_base, APMU_USB_CLK_RST_CTRL, USBP1_AXI_CLK);
 static CLOCK_GATE(usb30_clk, &apmu_base, APMU_USB_CLK_RST_CTRL, USB3_0_BUS_CLK_EN);
+static CLOCK_GATE(pcie0_clk, &apmu_base, APMU_PCIE_CLK_RES_CTRL_0, 0x7);
 
 
 // Resets
-static CLOCK_GATE(usb_axi_rst, &apmu_base, APMU_USB_CLK_RST_CTRL, USB_AXI_RST);
-static CLOCK_GATE(usb_p1_rst, &apmu_base, APMU_USB_CLK_RST_CTRL, USBP1_AXI_RST);
-static CLOCK_GATE(usb30_rst, &apmu_base, APMU_USB_CLK_RST_CTRL, USB3_0_AHB_RSTN | USB3_0_VCC_RESETN | USB3_0_PHY_RESETN);
+static RESET_GATE(usb_axi_rst, &apmu_base, APMU_USB_CLK_RST_CTRL, USB_AXI_RST, USB_AXI_RST, 0);
+static RESET_GATE(usb_p1_rst, &apmu_base, APMU_USB_CLK_RST_CTRL, USBP1_AXI_RST, USBP1_AXI_RST, 0);
+static RESET_GATE(usb30_rst, &apmu_base, APMU_USB_CLK_RST_CTRL, BIT(9) | BIT(10) | BIT(11), BIT(9) | BIT(10) | BIT(11), 0);
+static RESET_GATE(pcie0_rst, &apmu_base, APMU_PCIE_CLK_RES_CTRL_0, BIT(3)|BIT(4)|BIT(5)|BIT(8), BIT(3)|BIT(4)|BIT(5), BIT(8));
+static RESET_GATE(pcie1_rst, &apmu_base, APMU_PCIE_CLK_RES_CTRL_1, BIT(3)|BIT(4)|BIT(5)|BIT(8), BIT(3)|BIT(4)|BIT(5), BIT(8));
+static RESET_GATE(pcie2_rst, &apmu_base, APMU_PCIE_CLK_RES_CTRL_2, 0x138, 0x38, 0x100);
+	
 
 static clk_t *k1x_clk_table[] = {
     [CLK_USB_P1]    = &usb_p1_clk,
     [CLK_USB_AXI]   = &usb_axi_clk,
     [CLK_USB30]     = &usb30_clk,
+    [CLK_PCIE0]    = &pcie0_clk,
 
 };
 
-static clk_t *k1x_rst_table[] = {
+static rst_t *k1x_rst_table[] = {
     
     [RESET_USB_AXI]   = &usb_axi_rst,
     [RESET_USBP1_AXI] = &usb_p1_rst,
     [RESET_USB3_0]    = &usb30_rst,
+    [RESET_PCIE0]     = &pcie0_rst,
+    [RESET_PCIE1]	  = &pcie1_rst,
+    [RESET_PCIE2]	  = &pcie2_rst,
 };
 
 void clock_enable(clk_t *clk)
@@ -53,22 +62,34 @@ clk_t *get_clk_by_id(int id)
     return k1x_clk_table[id];
 }
 
-clk_t *get_reset_by_id(int id)
+rst_t *get_reset_by_id(int id)
 {
     return k1x_rst_table[id];
 }
 
-void reset_deassert(clk_t *rst)
+void reset_deassert(rst_t *rst)
 {
+    uint32_t val;
     uint64_t base = *(uint64_t *)rst->base;
-//    debug("[RST] put 0x%X to 0x%p\n", getreg32(base + rst->reg) | rst->mask, base + rst->reg);
-    putreg32(getreg32(base + rst->reg) | rst->mask, base + rst->reg); 
-//    debug("[RST] got 0x%X from 0x%p\n", getreg32(base + rst->reg), base + rst->reg);
+
+    val = getreg32((uint64_t)base + rst->reg);
+    val &= ~rst->mask;
+    val |= rst->deassert_val;
+    putreg32(val, (uint64_t)base + rst->reg); 
 }
 
-void reset_assert(clk_t *rst)
+void reset_assert(rst_t *rst)
 {
+    uint32_t val;
     uint64_t base = *(uint64_t *)rst->base;
-//    debug("[RST] put 0x%X to 0x%p\n", getreg32(base + rst->reg) | rst->mask, base + rst->reg);
-    putreg32(getreg32(base + rst->reg) & ~rst->mask, base + rst->reg);   
+
+    val = getreg32((uint64_t)base + rst->reg);
+    val &= ~rst->mask;
+    val |= rst->assert_val;
+    putreg32(val, (uint64_t)base + rst->reg); 
+}
+
+void dump_reg(size_t reg)
+{
+    debug("[REG DUMP] 0x%lX = 0x%X\n", reg, getreg32((uint64_t)apmu_base + reg));
 }

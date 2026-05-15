@@ -270,7 +270,7 @@ vm_init(void)
         early_printf("    0x%lX -> 0x%lX type %d\n", 
                 board_memmap[i].base, board_memmap[i].top, board_memmap[i].type);
       
-        if((board_memmap[i].type == MEM_IO) ||
+        if((board_memmap[i].type == MEM_IO) || (board_memmap[i].type == MEM_CMA) ||
             (board_memmap[i].type == FRMBUF)){
             mmu_map_pages(kernel_pagetable, DIRMEM_MAP + board_memmap[i].base,
                         board_memmap[i].top - board_memmap[i].base,
@@ -310,6 +310,7 @@ vm_init(void)
 
     vmem_init();
     kmem_init();
+
 }
 
 

@@ -128,12 +128,34 @@ usb3_sources = [
     'usb3/main.c', 
     'usb3/dwc3.c',
     'usb3/phy.c',
+    'usb3/combphy.c',
+    'usb3/host.c',
     'usb3/clock-k1x.c',
+    'usb3/hub.c',
+    'usb3/dma-pool.c',
+    'usb3/xhci-mem.c',
+    'usb3/xhci-ring.c',
+    'usb3/usb-ipc.c',
 ]
 
 usb3_elf = executable(
     'usb3',
     sources : usb3_sources,
+    include_directories: [include_libc, include_board, include_libsys, ],
+    c_args: c_args,
+    link_args: [linker_args],
+    link_with: [libsys_a, libc_a, ],
+    link_depends: [libsys_a, libc_a, ],
+)
+
+usb_core_sources = [
+    'usb-core/main.c', 
+    'usb-core/host.c',
+]
+
+usb_core_elf = executable(
+    'usb-core',
+    sources : usb_core_sources,
     include_directories: [include_libc, include_board, include_libsys, ],
     c_args: c_args,
     link_args: [linker_args],
@@ -151,8 +173,21 @@ asd_elf = executable(
     link_depends: [libsys_a, libc_a, ],
 )
 
+cpptest_elf = executable(
+    'cpptest',
+    sources: [
+        'cpptest/main.cpp', 
+        'cpptest/cpp_new.cpp',
+    ],
+    include_directories: [include_libc, include_board, include_libsys, ],
+    c_args: c_args,
+    link_args: [linker_args],
+    link_with: [libsys_a, libc_a, ],
+    link_depends: [libsys_a, libc_a, ],    
+)
+
 servers_img = custom_target('image',
-    input: [nameserver_elf, vfs_elf, devman_elf, tty_elf, usb3_elf,
+    input: [nameserver_elf, vfs_elf, devman_elf, tty_elf, usb3_elf, usb_core_elf,
              mmc_drv_elf, wm_elf, console_elf, one_elf],
     output: 'servers.img',
     command: [py3, meson.project_source_root() +'/tools/build_img.py', '@INPUT@', '-o', '@OUTPUT@'],
