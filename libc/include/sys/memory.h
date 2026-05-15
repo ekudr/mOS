@@ -30,8 +30,9 @@
 /* When "x" is a user-provided size.  */
 # define usize2tidx(x) csize2tidx (req2size(x))
 
-/* Flags */ 
-#define CHNK_INUSE  0x1
+/* Flags */
+#define CHNK_INUSE        0x1
+#define CHUNK_MAGIC_ALLOC 0xC0FFEE42u
 
 #define chunk2mem(p)   ((void*)((char*)(p) + CHUNK_HEAD_SIZE))
 #define mem2chunk(mem) ((mchunkptr_t)((char*)(mem) - CHUNK_HEAD_SIZE))
@@ -47,7 +48,8 @@
 
 struct mem_chunk
 {
-    uint64_t flags;
+    uint32_t magic;    /* CHUNK_MAGIC_ALLOC when allocated, 0 when free */
+    uint32_t flags;    /* CHNK_INUSE etc. */
     uint64_t size;
     list_head_t freelist;
 };
