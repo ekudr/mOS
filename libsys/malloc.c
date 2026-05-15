@@ -37,14 +37,16 @@ int mem_init(size_t size)
     return SUCCESS;
 }
 
-static inline void __add_to_fast(mchunkptr_t chunk)
-{
-    list_add(&gp_mmgr->qfast[fastbin_index(chunk->size)], &chunk->freelist);
-}
-
 static inline void __add_to_free(mchunkptr_t chunk)
 {
     list_add(&gp_mmgr->qfree, &chunk->freelist);
+}
+
+static inline void __add_to_fast(mchunkptr_t chunk)
+{
+    int idx = safe_fastbin_index(chunk->size);
+    if (idx < 0) { __add_to_free(chunk); return; }
+    list_add(&gp_mmgr->qfast[idx], &chunk->freelist);
 }
 
 static mchunkptr_t __split_chunk(mchunkptr_t chunk, uint64_t size)
@@ -78,17 +80,19 @@ static void *__find_free(size_t size)
 
     // Fast first
     if(size <= MAX_FAST_SIZE){
-        if(!list_is_empty(&gp_mmgr->qfast[fastbin_index(size)])){
-            chpos = gp_mmgr->qfast[fastbin_index(size)].next;
+        int idx = safe_fastbin_index(size);
+        if(idx >= 0 && !list_is_empty(&gp_mmgr->qfast[idx])){
+            chpos = gp_mmgr->qfast[idx].next;
             chunk = container_of(chpos, mem_chunk_t, freelist);
             list_del(&chunk->freelist);
-            chunk->flags &= CHNK_INUSE;
+            chunk->flags |= CHNK_INUSE;
             return chunk2mem(chunk);
         }
     }
     
 
-    if (list_is_empty(&gp_mmgr->qfree)) request_heap(size);
+    if (list_is_empty(&gp_mmgr->qfree))
+        if (request_heap(size) < 0) return NULL;
 
     list_for_each_entry(chunk, &gp_mmgr->qfree, freelist) {
         if(chunk->size >= size) {
@@ -111,8 +115,8 @@ int request_heap(size_t size)
     mem_heap_t *heap;
     mchunkptr_t chunk;
 //    debug("Requested memsize 0x%lX\n", size);
-    size += CHUNK_HEAD_SIZE;
-    size += sizeof(mem_heap_t);
+    size += CHUNK_HEAD_SIZE + sizeof(mem_heap_t);
+    if (size < CHUNK_HEAD_SIZE + sizeof(mem_heap_t)) return -EINVAL; // overflow guard
 //    debug("memsize + structures 0x%lX\n", size);
     size = PGROUNDUP(size);
 //    debug("Page round up memsize 0x%lX\n", size);
@@ -124,6 +128,7 @@ int request_heap(size_t size)
 
     heap = (mem_heap_t *)mmap(heap_top, bsize, MAP_PRIVATE | MAP_READ | MAP_WRITE, 0);
 
+    /* mOS sys_mmap returns NULL on failure, unlike POSIX MAP_FAILED */
     if(heap == NULL)
         return -ENOMEM;
     heap_top += bsize;
@@ -152,6 +157,7 @@ void *malloc(size_t size)
     size = req2size(size);
 //    debug("Alocating memsize 0x%lX\n", size);
 
+    /* Not thread-safe: protect with a once-flag if threading is added */
     if(gp_mmgr == NULL)
         if(mem_init(size) < 0 )
             return NULL;
@@ -172,6 +178,7 @@ void free(void *ptr)
         return;
 
     chunk = mem2chunk(ptr);
+    if (!(chunk->flags & CHNK_INUSE)) return; // double-free guard
     chunk->flags &= ~(CHNK_INUSE);
     list_init(&chunk->freelist);
 

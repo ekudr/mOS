@@ -47,6 +47,11 @@
 
 #define NFASTBINS  (fastbin_index (req2size (MAX_FAST_SIZE)) + 1)
 
+static inline int safe_fastbin_index(uint64_t sz) {
+    if (sz < MIN_CHUNK || sz > MAX_FAST_SIZE) return -1;
+    return (int)fastbin_index(sz);
+}
+
 
 struct mem_chunk
 {
