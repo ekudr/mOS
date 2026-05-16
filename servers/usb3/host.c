@@ -449,6 +449,79 @@ int xhci_evaluate_context(uint8_t slot_id)
     return SUCCESS;
 }
 
+int xhci_disable_device_slot(uint8_t slot_id)
+{
+    xhci_trb_t trb;
+    memset(&trb, 0, sizeof(trb));
+    trb.control = SLOT_ID_FOR_TRB(slot_id) | TRB_TYPE(TRB_DISABLE_SLOT);
+
+    xhci_event_cmd_t *comp = xhci_send_command(xhci_dev, &trb, 200);
+    if (!comp) {
+        debug("[XHCI] Disable Slot command failed for slot %u\n", slot_id);
+        return -EIO;
+    }
+    if (GET_COMP_CODE(comp->status) != COMP_SUCCESS) {
+        debug("[XHCI] Disable Slot failed code %u slot %u\n",
+              GET_COMP_CODE(comp->status), slot_id);
+        return -EIO;
+    }
+    debug("[XHCI] Slot %u disabled\n", slot_id);
+    return SUCCESS;
+}
+
+int xhci_reset_ep(uint8_t slot_id, uint8_t ep_id)
+{
+    xhci_virt_dev_t *dev = xhci_dev->devs[slot_id];
+    if (!dev || !dev->eps[ep_id - 1]) return -EINVAL;
+
+    xhci_trb_t trb;
+    memset(&trb, 0, sizeof(trb));
+    trb.control = SLOT_ID_FOR_TRB(slot_id) | ((ep_id & 0x1f) << 16) | TRB_TYPE(TRB_RESET_EP);
+
+    xhci_event_cmd_t *comp = xhci_send_command(xhci_dev, &trb, 200);
+    if (!comp) {
+        debug("[XHCI] Reset EP command failed slot %u ep %u\n", slot_id, ep_id);
+        return -EIO;
+    }
+    if (GET_COMP_CODE(comp->status) != COMP_SUCCESS) {
+        debug("[XHCI] Reset EP failed code %u slot %u ep %u\n",
+              GET_COMP_CODE(comp->status), slot_id, ep_id);
+        return -EIO;
+    }
+    debug("[XHCI] Reset EP %u on slot %u\n", ep_id, slot_id);
+    return SUCCESS;
+}
+
+int xhci_stop_ep(uint8_t slot_id, uint8_t ep_id)
+{
+    xhci_virt_dev_t *dev = xhci_dev->devs[slot_id];
+    if (!dev || !dev->eps[ep_id - 1] || !dev->eps[ep_id - 1]->tr_ring)
+        return -EINVAL;
+
+    xhci_trb_t trb;
+    memset(&trb, 0, sizeof(trb));
+    /* bits 20:16 = EP ID, bits 31:24 = Slot ID */
+    trb.control = SLOT_ID_FOR_TRB(slot_id) | ((ep_id & 0x1f) << 16) | TRB_TYPE(TRB_STOP_RING);
+
+    xhci_event_cmd_t *comp = xhci_send_command(xhci_dev, &trb, 200);
+    if (!comp) {
+        debug("[XHCI] Stop Endpoint command failed slot %u ep %u\n", slot_id, ep_id);
+        return -EIO;
+    }
+
+    /* Signal any pending waiter with -ENODEV */
+    xhci_virt_ep_t *ep = dev->eps[ep_id - 1];
+    if (ep->waiter_pid) {
+        ep->comp_code = -ENOENT;
+        wmb();
+        __atomic_store_n(&ep->comp_done, 1, __ATOMIC_RELEASE);
+        ep->waiter_pid = 0;
+    }
+
+    debug("[XHCI] Stopped endpoint %u on slot %u\n", ep_id, slot_id);
+    return SUCCESS;
+}
+
 static void xhci_config_runtime_regs(xhci_t *xhci)
 {
     volatile xhci_intr_reg_t *ir = &xhci->run_regs->ir_set[0];
@@ -474,39 +547,43 @@ static void handle_port_status(xhci_t *xhci, xhci_trb_t *trb)
     
     uint32_t port_id = GET_PORT_ID(trb->parameter);
     uint32_t portsc = _read_portsc_reg(port_id-1);
-    if (port_id == 1) {
+
+    /* Reset any port that shows a new connection (CSC + CCS). */
+    if ((portsc & PORT_CSC) && (portsc & PORT_CONNECT)) {
         portsc = xhci_port_state_to_neutral(portsc);
         portsc |= PORT_RESET;
         _write_portsc_reg(portsc, port_id-1);
 
-         int timeout = 1000;
-         while (timeout > 0) {
-             portsc = _read_portsc_reg(port_id-1);
-
-             if (!(portsc & PORT_RESET)) {
-                 break; // Reset has completed
-             }
-
-             timeout--;
-             udelay(1000);
-         }
+        int timeout = 1000;
+        while (timeout > 0) {
+            portsc = _read_portsc_reg(port_id-1);
+            if (!(portsc & PORT_RESET))
+                break;
+            timeout--;
+            udelay(1000);
+        }
+        /* Clear all status-change bits after reset */
         portsc = xhci_port_state_to_neutral(portsc);
-        portsc |= PORT_RC;
-        portsc |= PORT_PEC;
+        portsc |= PORT_RC | PORT_PEC | PORT_CSC;
+        _write_portsc_reg(portsc, port_id-1);
+    } else {
+        /* Disconnection or other change — clear CSC only */
+        portsc = xhci_port_state_to_neutral(portsc);
         portsc |= PORT_CSC;
         _write_portsc_reg(portsc, port_id-1);
-  
-    } else {
-        portsc = xhci_port_state_to_neutral(portsc);
-        portsc |=PORT_CSC;
-        _write_portsc_reg(portsc, port_id-1);
-        
-     }
+    }
 
     portsc = _read_portsc_reg(port_id-1);
-    xhci->hw_ports[port_id-1].device_connected = 1;
-    xhci->active_port = port_id - 1;  // Store 0-based port number
-    xhci->hub_events |= XHCI_HUB_EVENT_PORT_CHANGE;
+    if (portsc & PORT_CONNECT) {
+        xhci->hw_ports[port_id-1].device_connected    = 1;
+        xhci->hw_ports[port_id-1].device_disconnected = 0;
+        xhci->active_port = port_id - 1;
+        xhci->hub_events |= XHCI_HUB_EVENT_PORT_CHANGE;
+    } else {
+        xhci->hw_ports[port_id-1].device_connected    = 0;
+        xhci->hw_ports[port_id-1].device_disconnected = 1;
+        xhci->hub_events |= XHCI_HUB_EVENT_PORT_DISCONNECT;
+    }
     
     debug("\x1b[31m[xhci]\x1b[0m port 0x%x speed: %s\n", port_id, 
                 _usb_speed_to_string(_get_port_speed(port_id-1)));  
@@ -526,9 +603,10 @@ static void handle_transfer_event(xhci_t *xhci, xhci_trb_t *trb)
         return;
     }
 
-    xhci_ring_t *ring = dev->eps[transfer_event->ep_id - 1]->tr_ring;
+    xhci_virt_ep_t *ep = dev->eps[transfer_event->ep_id - 1];
+    xhci_ring_t *ring = ep->tr_ring;
     if (!ring) {
-        debug("\x1b[31m[xhci]\x1b[0m No ring for slot %u EP%u in transfer event\n", 
+        debug("\x1b[31m[xhci]\x1b[0m No ring for slot %u EP%u in transfer event\n",
               slot_id, transfer_event->ep_id-1);
         return;
     }
@@ -536,7 +614,10 @@ static void handle_transfer_event(xhci_t *xhci, xhci_trb_t *trb)
     size_t offset = transfer_event->buffer - dma_get_phys(xhci->xmem_pool, ring->trbs);
     ring->denqueue_ptr = offset / sizeof(xhci_trb_t);
 
+    ep->comp_code = transfer_event->complition_code;
+    ep->residual  = transfer_event->transfer_length;
     wmb();
+    __atomic_store_n(&ep->comp_done, 1, __ATOMIC_RELEASE);
     // debug("\x1b[31m[xhci]\x1b[0m Transfer Event: slot %u EP%u status 0x%x length %u\n", 
     //       slot_id, transfer_event->ep_id-1, transfer_event->complition_code, transfer_event->transfer_length);
 
@@ -721,7 +802,7 @@ int xhci_init(void *base_addr, int irq)
     if (ret < 0)
 		return ret;
 
-    xhci_roothub_ports_status(xhci_dev);
+ //   xhci_roothub_ports_status(xhci_dev);
  //   _log_op_regs(xhci_dev);
     return SUCCESS;
 }
@@ -785,22 +866,6 @@ int xhci_start_host()
             return ret;
 
     _parce_extended_caps();
-
-
-
-    // uint32_t portsc = _read_portsc_reg(0);
-    // if ((portsc & PORT_CSC) && portsc & PORT_CONNECT) {
-    //     if (!xhci_reset_port(0, 0))
-    //         debug("[XHCI] Device connected on port 0 on %u\n", DEV_PORT_SPEED(_read_portsc_reg(0)));
-    // }
-    // portsc = _read_portsc_reg(1);
-    // if ((portsc & PORT_CSC) && portsc & PORT_CONNECT) {
-    //     if (!xhci_reset_port(1, 1))
-    //         debug("[XHCI] Device connected on port 1 on %u\n", DEV_PORT_SPEED(_read_portsc_reg(1)));
-    // }
-
-
-
 
     return ret;
 }
@@ -1065,52 +1130,40 @@ int xhci_enumerate_device(uint8_t slot_id)
 void xhci_hub_events(void)
 {
     int ret;
+
     if (xhci_dev->hub_events & XHCI_HUB_EVENT_PORT_CHANGE) {
-        
         for (int i = 0; i < xhci_dev->max_ports; i++) {
             if (xhci_dev->hw_ports[i].device_connected) {
-                usb_host_signal_t port_signal = {
-                        .host_id = usb_host_id,
-                        .port_id = i,
+                usb_host_signal_t sig = {
+                    .host_id = usb_host_id,
+                    .port_id = i,
+                    .state   = USB_PORT_STATE_CONNECTED,
                 };
-                ret = signal_send(usb_core_pid, SIGNAL_USER_BASE, port_signal.signal);
-                if (ret < 0) {
-//                    debug("[XHCI] Failed to notify USB core of device connection on port %u\n", i);
+                ret = signal_send(usb_core_pid, SIGNAL_USER_BASE, sig.signal);
+                if (ret < 0)
                     return;
-                }
-//                handle_new_device(i);
-                debug("[XHCI] Port %u device connected\n", i+1);
+                debug("[XHCI] Port %u device connected\n", i + 1);
                 xhci_dev->hw_ports[i].device_connected = 0;
             }
         }
-
-//
-        
-//         uint8_t slot_id = xhci_enable_device_slot();
-//         if (slot_id)
-//             debug("[XHCI] slot_id:%u enabled\n", slot_id);
-//         debug("[XHCI] slot_id:%u active port:%u allocating device context\n",
-//                      slot_id, xhci_dev->active_port);
-//         ret = xhci_alloc_virt_device(xhci_dev, slot_id, /*xhci_dev->active_port*/1);  
-//         if (ret < 0) {
-//               debug("[XHCI] slot_id:%u can not allocate device context\n", slot_id);
-//               xhci_dev->hub_events &= ~XHCI_HUB_EVENT_PORT_CHANGE;
-//               return;
-//         }
-
-//         ret = xhci_address_device(slot_id, true);
-// //         _dump_device_context(xhci_dev->devs[slot_id]);
-//         if (ret < 0) {
-//               debug("[XHCI] slot_id:%u can not address device\n", slot_id);
-//         } else {
-//             // Device successfully addressed, now read and print descriptors
-//             ret = xhci_enumerate_device(slot_id);
-//             if (ret < 0) {
-//                 debug("[XHCI] slot_id:%u device enumeration failed\n", slot_id);
-//             }
-//         }
- //       dma_pool_dump(xhci_dev->xmem_pool);
         xhci_dev->hub_events &= ~XHCI_HUB_EVENT_PORT_CHANGE;
- //       _dump_device_context(xhci_dev->devs[slot_id]);
+    }
+
+    if (xhci_dev->hub_events & XHCI_HUB_EVENT_PORT_DISCONNECT) {
+        for (int i = 0; i < xhci_dev->max_ports; i++) {
+            if (xhci_dev->hw_ports[i].device_disconnected) {
+                usb_host_signal_t sig = {
+                    .host_id = usb_host_id,
+                    .port_id = i,
+                    .state   = USB_PORT_STATE_DISCONNECTED,
+                };
+                ret = signal_send(usb_core_pid, SIGNAL_USER_BASE, sig.signal);
+                if (ret < 0)
+                    return;
+                debug("[XHCI] Port %u device disconnected\n", i + 1);
+                xhci_dev->hw_ports[i].device_disconnected = 0;
+            }
+        }
+        xhci_dev->hub_events &= ~XHCI_HUB_EVENT_PORT_DISCONNECT;
     }
 }

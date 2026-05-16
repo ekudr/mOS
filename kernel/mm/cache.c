@@ -76,7 +76,7 @@ int check_cache_range(unsigned long start, unsigned long end)
 		ok = 0;
 
 	if (!ok) {
-		debug("CACHE: Misaligned operation at range [%08lx, %08lx]\n",
+		debug("CACHE: Misaligned operation at range [0x%08lx, 0x%08lx]\n",
 			start, end);
 	}
 

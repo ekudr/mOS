@@ -107,22 +107,22 @@ mmc_drv_elf = executable(
 
 )
 
-usb2_sources = [
-    'usb2/main.c', 
-    'usb2/ehci.c',
-    'usb2/phy.c',
-    'usb2/clock-k1x.c',
-]
+#usb2_sources = [
+#    'usb2/main.c', 
+#    'usb2/ehci.c',
+#    'usb2/phy.c',
+#    'usb2/clock-k1x.c',
+#]
 
-usb2_elf = executable(
-    'usb2',
-    sources : usb2_sources,
-    include_directories: [include_libc, include_board, include_libsys, ],
-    c_args: c_args,
-    link_args: [linker_args],
-    link_with: [libsys_a, libc_a, ],
-    link_depends: [libsys_a, libc_a, ],
-)
+#usb2_elf = executable(
+#    'usb2',
+#    sources : usb2_sources,
+#    include_directories: [include_libc, include_board, include_libsys, ],
+#    c_args: c_args,
+#    link_args: [linker_args],
+#    link_with: [libsys_a, libc_a, ],
+#    link_depends: [libsys_a, libc_a, ],
+#)
 
 usb3_sources = [
     'usb3/main.c', 
@@ -163,6 +163,26 @@ usb_core_elf = executable(
     link_depends: [libsys_a, libc_a, ],
 )
 
+usb_hub_elf = executable(
+    'usb-hub',
+    sources : ['usb-hub/main.c'],
+    include_directories: [include_libc, include_board, include_libsys, ],
+    c_args: c_args,
+    link_args: [linker_args],
+    link_with: [libsys_a, libc_a, ],
+    link_depends: [libsys_a, libc_a, ],
+)
+
+usb_hid_elf = executable(
+    'usb-hid',
+    sources : ['usb-hid/main.c'],
+    include_directories: [include_libc, include_board, include_libsys, ],
+    c_args: c_args,
+    link_args: [linker_args],
+    link_with: [libsys_a, libc_a, ],
+    link_depends: [libsys_a, libc_a, ],
+)
+
 asd_elf = executable(
     'asd',
     sources : ['asd.c'],
@@ -187,16 +207,18 @@ cpptest_elf = executable(
 )
 
 srvrs_list = [
-    nameserver_elf, 
-    vfs_elf, 
-    devman_elf, 
-    tty_elf, 
-    usb3_elf, 
+    nameserver_elf,
+    vfs_elf,
+    devman_elf,
+    tty_elf,
+    usb3_elf,
     usb_core_elf,
-    mmc_drv_elf, 
-    wm_elf, 
-    console_elf, 
-    one_elf, 
+    usb_hub_elf,
+    usb_hid_elf,
+    mmc_drv_elf,
+    wm_elf,
+    console_elf,
+    one_elf,
     cpptest_elf,
 ]
 

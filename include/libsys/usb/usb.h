@@ -240,5 +240,73 @@ typedef struct usb_setup_packet {
 #define USB_STATE_CONFIGURED             5
 #define USB_STATE_SUSPENDED              6
 
+// USB Hub Descriptor Types
+#define USB_DT_HUB                       0x29
+#define USB_DT_SS_HUB                    0x2A
+
+// Hub port feature selectors (wValue for SetPortFeature / ClearPortFeature)
+#define USB_PORT_FEAT_ENABLE             1
+#define USB_PORT_FEAT_SUSPEND            2
+#define USB_PORT_FEAT_RESET              4
+#define USB_PORT_FEAT_POWER              8
+#define USB_PORT_FEAT_C_CONNECTION       16
+#define USB_PORT_FEAT_C_ENABLE           17
+#define USB_PORT_FEAT_C_SUSPEND          18
+#define USB_PORT_FEAT_C_OVER_CURRENT     19
+#define USB_PORT_FEAT_C_RESET            20
+// SuperSpeed-only feature selectors
+#define USB_PORT_FEAT_C_PORT_LINK_STATE  25
+#define USB_PORT_FEAT_C_BH_PORT_RESET    29
+
+// Hub port status bits (wPortStatus field from GetPortStatus)
+#define USB_PORT_STAT_CONNECTION         (1 << 0)
+#define USB_PORT_STAT_ENABLE             (1 << 1)
+#define USB_PORT_STAT_SUSPEND            (1 << 2)
+#define USB_PORT_STAT_OVERCURRENT        (1 << 3)
+#define USB_PORT_STAT_RESET              (1 << 4)
+#define USB_PORT_STAT_POWER              (1 << 8)
+#define USB_PORT_STAT_LOW_SPEED          (1 << 9)
+#define USB_PORT_STAT_HIGH_SPEED         (1 << 10)
+
+// Hub port change bits (wPortChange field from GetPortStatus)
+#define USB_PORT_CHANGE_CONNECTION       (1 << 0)
+#define USB_PORT_CHANGE_ENABLE           (1 << 1)
+#define USB_PORT_CHANGE_SUSPEND          (1 << 2)
+#define USB_PORT_CHANGE_OVERCURRENT      (1 << 3)
+#define USB_PORT_CHANGE_RESET            (1 << 4)
+// SuperSpeed-only change bits
+#define USB_PORT_CHANGE_BH_RESET         (1 << 5)
+#define USB_PORT_CHANGE_LINK_STATE       (1 << 6)
+
+// USB Hub Descriptor (USB 2.0 spec section 11.23.2.1)
+typedef struct usb_hub_descriptor {
+    uint8_t  bLength;
+    uint8_t  bDescriptorType;       /* USB_DT_HUB */
+    uint8_t  bNbrPorts;
+    uint16_t wHubCharacteristics;
+    uint8_t  bPwrOn2PwrGood;        /* in 2ms units */
+    uint8_t  bHubContrCurrent;
+    uint8_t  DeviceRemovable[2];    /* covers up to 15 ports */
+} __attribute__((packed)) usb_hub_descriptor_t;
+
+// USB SuperSpeed Hub Descriptor (USB 3.x spec section 10.14.2)
+typedef struct usb_ss_hub_descriptor {
+    uint8_t  bLength;               /* 12 */
+    uint8_t  bDescriptorType;       /* USB_DT_SS_HUB */
+    uint8_t  bNbrPorts;
+    uint16_t wHubCharacteristics;
+    uint8_t  bPwrOn2PwrGood;        /* in 2ms units */
+    uint8_t  bHubContrCurrent;
+    uint8_t  bHubHdrDecLat;
+    uint16_t wHubDelay;
+    uint16_t DeviceRemovable;
+} __attribute__((packed)) usb_ss_hub_descriptor_t;
+
+// Port Status structure returned by GetPortStatus (hub class request)
+typedef struct usb_port_status {
+    uint16_t wPortStatus;
+    uint16_t wPortChange;
+} __attribute__((packed)) usb_port_status_t;
+
 
 #endif /* __USB_H__ */

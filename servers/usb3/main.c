@@ -134,18 +134,24 @@ int main()
             handle_enable_slot(sender, info);
             break;
         case IPC_HOST_DISABLE_SLOT:
-            // debug("[XHCI] IPC HOST DISABLE SLOT\n");
-            // handle_disable_slot(sender, info);
+            handle_disable_slot(sender, info);
+            break;
+        case IPC_HOST_STOP_EP:
+            handle_stop_ep(sender, info);
             break;
         case IPC_HOST_ADDRESS_DEVICE:
-            // debug("[XHCI] IPC HOST ADDRESS DEVICE\n");
-            // handle_address_device(sender, info);
+            handle_address_device(sender, info);
             break;
         case IPC_HOST_CONFIG_EP:
-            // debug("[XHCI] IPC HOST CONFIG EP\n");
             handle_config_ep(sender, info);
             break;
-        
+        case IPC_HOST_UPDATE_EP0_MPS:
+            handle_update_ep0_mps(sender, info);
+            break;
+        case IPC_HOST_XFER_SUBMIT:
+            handle_xfer_submit(sender, info);
+            break;
+
         default:
             break;
         } 

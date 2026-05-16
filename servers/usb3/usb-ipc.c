@@ -6,6 +6,7 @@
 #include <sched.h>
 #include <signals.h>
 #include <string.h>
+#include <libsys/barrier.h>
 
 #include <libsys/usb/usb-ipc.h>
 #include "xhci.h"
@@ -21,8 +22,8 @@ void handle_ctrl_transfer_request(uint64_t sender, uint64_t info)
 
     usb_host_cmd_t *cmd = (usb_host_cmd_t *)get_ipc_buffer()->msg;
 
-    debug("[XHCI] Control Transfer Request from sender 0x%lX: slot_id %u, data_len %u\n",
-          sender, cmd->ctrl.slot_id, cmd->ctrl.data_len);
+    // debug("[XHCI] Control Transfer Request from sender 0x%lX: slot_id %u, data_len %u\n",
+    //       sender, cmd->ctrl.slot_id, cmd->ctrl.data_len);
 
     if (cmd->ctrl.data_len > buf_size) {
         debug("[XHCI] Control transfer data length %u exceeds buffer size %u\n",
@@ -56,72 +57,72 @@ reply_error:
         ipc_reply(ret_info);
 }
 
-int _handle_new_device(uint8_t port_id)
-{
-    debug("\x1b[31m[xhci]\x1b[0m New device connected on port 0x%x speed: %s\n", port_id, 
-                _usb_speed_to_string(_get_port_speed(port_id)));  
+// int _handle_new_device(uint8_t port_id)
+// {
+//     debug("\x1b[31m[xhci]\x1b[0m New device connected on port 0x%x speed: %s\n", port_id, 
+//                 _usb_speed_to_string(_get_port_speed(port_id)));  
 
-    uint8_t slot_id = xhci_enable_device_slot();
-    if (slot_id)
-            debug("[XHCI] slot_id:%u enabled\n", slot_id);
-    debug("[XHCI] slot_id:%u active port:%u allocating device context\n",
-                     slot_id, xhci_dev->active_port);
-    int ret = xhci_alloc_virt_device(xhci_dev, slot_id, port_id);
-    if (ret < 0) {
-            debug("[XHCI] slot_id:%u can not allocate device context\n", slot_id);
-            xhci_dev->hub_events &= ~XHCI_HUB_EVENT_PORT_CHANGE;
-            return ret;
-    }
+//     uint8_t slot_id = xhci_enable_device_slot();
+//     if (slot_id)
+//             debug("[XHCI] slot_id:%u enabled\n", slot_id);
+//     debug("[XHCI] slot_id:%u active port:%u allocating device context\n",
+//                      slot_id, xhci_dev->active_port);
+//     int ret = xhci_alloc_virt_device(xhci_dev, slot_id, port_id, 0, 0, 0);
+//     if (ret < 0) {
+//             debug("[XHCI] slot_id:%u can not allocate device context\n", slot_id);
+//             xhci_dev->hub_events &= ~XHCI_HUB_EVENT_PORT_CHANGE;
+//             return ret;
+//     }
 
-    debug("\x1b[31m[xhci]\x1b[0m Allocated slot ID %u for port 0x%x\n", slot_id, port_id);  
+//     debug("\x1b[31m[xhci]\x1b[0m Allocated slot ID %u for port 0x%x\n", slot_id, port_id);  
 
-    ret = xhci_address_device(slot_id, false);
-    if (ret != SUCCESS) {
-        debug("\x1b[31m[xhci]\x1b[0m Failed to address device on slot %u\n", slot_id);  
-        return ret;
-    }
+//     ret = xhci_address_device(slot_id, false);
+//     if (ret != SUCCESS) {
+//         debug("\x1b[31m[xhci]\x1b[0m Failed to address device on slot %u\n", slot_id);  
+//         return ret;
+//     }
 
-    debug("\x1b[31m[xhci]\x1b[0m Device addressed on slot %u\n", slot_id);  
+//     debug("\x1b[31m[xhci]\x1b[0m Device addressed on slot %u\n", slot_id);  
 
-    xhci_slot_ctx_t *slot_ctx = xhci_dev->devs[slot_id]->out_ctx;
+//     xhci_slot_ctx_t *slot_ctx = xhci_dev->devs[slot_id]->out_ctx;
 
-    uint8_t dev_address = slot_ctx->dev_state & DEV_ADDR_MASK;
+//     uint8_t dev_address = slot_ctx->dev_state & DEV_ADDR_MASK;
 
-    usb_core_cmd_t *cmd = (usb_core_cmd_t *)get_ipc_buffer()->msg;
+//     usb_core_cmd_t *cmd = (usb_core_cmd_t *)get_ipc_buffer()->msg;
 
-    // Send IPC to usb-core to register new device
-    cmd->src = IPC_SRC_HOST;
-    cmd->cmd_type = IPC_DEVICE_CONNECT;
-    cmd->new_dev.host_id = usb_host_id;
-    cmd->new_dev.slot_id = slot_id;
-    cmd->new_dev.address = dev_address;
-    cmd->new_dev.speed   = _get_port_speed(port_id);
-    cmd->new_dev.port    = port_id;
-    cmd->new_dev.state   = GET_SLOT_STATE(slot_ctx->dev_state);
+//     // Send IPC to usb-core to register new device
+//     cmd->src = IPC_SRC_HOST;
+//     cmd->cmd_type = IPC_DEVICE_CONNECT;
+//     cmd->new_dev.host_id = usb_host_id;
+//     cmd->new_dev.slot_id = slot_id;
+//     cmd->new_dev.address = dev_address;
+//     cmd->new_dev.speed   = _get_port_speed(port_id);
+//     cmd->new_dev.port    = port_id;
+//     cmd->new_dev.state   = GET_SLOT_STATE(slot_ctx->dev_state);
 
-    msg_info_t info = msginfo_word_new(0, sizeof(usb_core_cmd_t)/8, 0, 0);
+//     msg_info_t info = msginfo_word_new(0, sizeof(usb_core_cmd_t)/8, 0, 0);
 
-    signal_send(usb_core_pid, SIGNAL_USER_BASE, ((uint64_t)usb_host_id << 8 | port_id));
+//     signal_send(usb_core_pid, SIGNAL_USER_BASE, ((uint64_t)usb_host_id << 8 | port_id));
     
- //   info = ipc_call(usb_core_cap, info);
-    ipc_send(usb_core_cap, info); 
-    // ret = (int)label_from_msginfo_word(info);
-    // if (ret < 0 || !length_from_msginfo_word(info)) {
-    //     debug("[XHCI] Error registring host %d info 0x%lX\n", ret, info);
-    //     return ret;
-    // }
-    // ret = ipc_getMR(0);
-    //     if (ret < 0) {
-    //         debug("[XHCI] usb-core failed to register new device on slot %u\n", slot_id);
-    //         return ret;
-    //     }
-    // debug("\x1b[31m[xhci]\x1b[0m Device registration with usb-core on host ID %d slot ID %d\n",
-    //             usb_host_id, slot_id);
+//  //   info = ipc_call(usb_core_cap, info);
+//     ipc_send(usb_core_cap, info); 
+//     // ret = (int)label_from_msginfo_word(info);
+//     // if (ret < 0 || !length_from_msginfo_word(info)) {
+//     //     debug("[XHCI] Error registring host %d info 0x%lX\n", ret, info);
+//     //     return ret;
+//     // }
+//     // ret = ipc_getMR(0);
+//     //     if (ret < 0) {
+//     //         debug("[XHCI] usb-core failed to register new device on slot %u\n", slot_id);
+//     //         return ret;
+//     //     }
+//     // debug("\x1b[31m[xhci]\x1b[0m Device registration with usb-core on host ID %d slot ID %d\n",
+//     //             usb_host_id, slot_id);
 
-    debug("[XHCI] Registration request sent to usb-core for slot ID %d\n", slot_id);
-    return ret;
+//     debug("[XHCI] Registration request sent to usb-core for slot ID %d\n", slot_id);
+//     return ret;
 
-}
+// }
 
 void handle_new_device(uint64_t sender, uint64_t info)
 {
@@ -130,14 +131,19 @@ void handle_new_device(uint64_t sender, uint64_t info)
 
     usb_host_cmd_t *cmd = (usb_host_cmd_t *)get_ipc_buffer()->msg;
 
-    uint8_t slot_id = cmd->new_dev.slot_id;
-    uint8_t port_id = cmd->new_dev.port;
-    
-    ret = xhci_alloc_virt_device(xhci_dev, slot_id, port_id);
+    uint8_t  slot_id      = cmd->new_dev.slot_id;
+    uint8_t  port_id      = cmd->new_dev.port;
+    uint8_t  parent_slot  = cmd->new_dev.parent_slot;
+    uint32_t route_string = cmd->new_dev.route_string;
+    uint8_t  speed        = cmd->new_dev.speed;
+    uint8_t  tt_slot      = cmd->new_dev.tt_slot;
+    uint8_t  tt_port      = cmd->new_dev.hub_port;
+
+    ret = xhci_alloc_virt_device(xhci_dev, slot_id, port_id, parent_slot, route_string, speed, tt_slot, tt_port);
     if (ret < 0) {
         debug("[XHCI] slot_id:%u can not allocate device context\n", slot_id);
         goto reply_error;
-    } 
+    }
 
     ret = xhci_address_device(slot_id, true);
     if (ret != SUCCESS) {
@@ -191,6 +197,209 @@ reply_error:
         ipc_setMR(0, ret); // Error code
         ret_info = msginfo_word_new(0, 1, 0, 0);
         ipc_reply(ret_info);
+}
+
+void handle_disable_slot(uint64_t sender, uint64_t info)
+{
+    int ret;
+    msg_info_t ret_info;
+
+    usb_host_cmd_t *cmd = (usb_host_cmd_t *)get_ipc_buffer()->msg;
+    uint8_t slot_id = cmd->new_dev.slot_id;
+
+    ret = xhci_disable_device_slot(slot_id);
+    if (ret < 0) {
+        debug("[XHCI] Disable slot failed for slot %u\n", slot_id);
+        goto reply_error;
+    }
+
+    xhci_free_virt_device(xhci_dev, slot_id);
+
+    ipc_setMR(0, 0);
+    ret_info = msginfo_word_new(0, 1, 0, 0);
+    ipc_reply(ret_info);
+    return;
+
+reply_error:
+    ipc_setMR(0, ret);
+    ret_info = msginfo_word_new(0, 1, 0, 0);
+    ipc_reply(ret_info);
+}
+
+void handle_stop_ep(uint64_t sender, uint64_t info)
+{
+    int ret;
+    msg_info_t ret_info;
+
+    usb_host_cmd_t *cmd = (usb_host_cmd_t *)get_ipc_buffer()->msg;
+    uint8_t slot_id = cmd->stop_ep.slot_id;
+    uint8_t ep_id   = cmd->stop_ep.ep_id;
+
+    ret = xhci_stop_ep(slot_id, ep_id);
+    if (ret < 0)
+        debug("[XHCI] Stop EP %u failed for slot %u\n", ep_id, slot_id);
+    /* reply even on failure — usb-core must proceed with teardown */
+
+    ipc_setMR(0, ret);
+    ret_info = msginfo_word_new(0, 1, 0, 0);
+    ipc_reply(ret_info);
+}
+
+void handle_address_device(uint64_t sender, uint64_t info)
+{
+    int ret;
+    msg_info_t ret_info;
+
+    usb_host_cmd_t *cmd = (usb_host_cmd_t *)get_ipc_buffer()->msg;
+    uint8_t slot_id = cmd->new_dev.slot_id;
+
+    ret = xhci_address_device(slot_id, false);
+    if (ret != SUCCESS) {
+        debug("[XHCI] Address Device (BSR=false) failed for slot %u\n", slot_id);
+        goto reply_error;
+    }
+
+    debug("[XHCI] Device addressed (BSR=false) slot %u\n", slot_id);
+    ipc_setMR(0, 0);
+    ret_info = msginfo_word_new(0, 1, 0, 0);
+    ipc_reply(ret_info);
+    return;
+
+reply_error:
+    ipc_setMR(0, ret);
+    ret_info = msginfo_word_new(0, 1, 0, 0);
+    ipc_reply(ret_info);
+}
+
+void handle_update_ep0_mps(uint64_t sender, uint64_t info)
+{
+    int ret;
+    msg_info_t ret_info;
+
+    usb_host_cmd_t *cmd = (usb_host_cmd_t *)get_ipc_buffer()->msg;
+    uint8_t slot_id = cmd->update_ep0_mps.slot_id;
+    uint16_t mps    = cmd->update_ep0_mps.mps;
+
+    xhci_virt_dev_t *dev = xhci_dev->devs[slot_id];
+    if (!dev) {
+        debug("[XHCI] No device context for slot %u (update_ep0_mps)\n", slot_id);
+        ret = -EINVAL;
+        goto reply_error;
+    }
+
+    uint32_t ctx_size = HCC_64BYTE_CONTEXT(xhci_dev->hcc_params) ? 64 : 32;
+
+    xhci_input_control_ctx_t *in_ctrl = (xhci_input_control_ctx_t *)dev->in_ctx;
+    in_ctrl->drop_flags = 0;
+    in_ctrl->add_flags  = EP0_FLAG;   /* evaluate EP0 context only */
+
+    xhci_ep_ctx_t *ep0_ctx = (xhci_ep_ctx_t *)((uint8_t *)dev->in_ctx + 2 * ctx_size);
+    ep0_ctx->ep_info2 = (ep0_ctx->ep_info2 & ~MAX_PACKET_MASK) | MAX_PACKET(mps);
+
+    wmb();
+    dma_cache_flush(xhci_dev->xmem_pool, dev->in_ctx, 3 * ctx_size);
+
+    ret = xhci_evaluate_context(slot_id);
+    if (ret != SUCCESS) {
+        debug("[XHCI] Evaluate Context failed for slot %u mps %u\n", slot_id, mps);
+        goto reply_error;
+    }
+
+    debug("[XHCI] EP0 mps updated to %u for slot %u\n", mps, slot_id);
+    ipc_setMR(0, 0);
+    ret_info = msginfo_word_new(0, 1, 0, 0);
+    ipc_reply(ret_info);
+    return;
+
+reply_error:
+    ipc_setMR(0, ret);
+    ret_info = msginfo_word_new(0, 1, 0, 0);
+    ipc_reply(ret_info);
+}
+
+void handle_xfer_submit(uint64_t sender, uint64_t info)
+{
+    int ret;
+    msg_info_t ret_info;
+
+    usb_host_cmd_t *cmd = (usb_host_cmd_t *)get_ipc_buffer()->msg;
+    uint8_t  slot_id = cmd->xfer.slot_id;
+    uint8_t  ep_id   = cmd->xfer.ep_id;
+    uint8_t  data_in = (cmd->xfer.dir == USB_DIR_IN);
+    uint32_t len     = cmd->xfer.len;
+
+    if (!len || len > buf_size) {
+        debug("[XHCI] XFER_SUBMIT invalid len %u (buf_size %u)\n", len, buf_size);
+        ret = -EINVAL;
+        goto reply_error;
+    }
+
+    void *dma_buf = dma_alloc(xhci_dev->xmem_pool, len, 64);
+    if (!dma_buf) {
+        debug("[XHCI] XFER_SUBMIT cannot alloc DMA buf len %u\n", len);
+        ret = -ENOMEM;
+        goto reply_error;
+    }
+
+    if (!data_in) {
+        /* OUT: copy data from shared buffer into DMA buffer */
+        memcpy(dma_buf, buf, len);
+        wmb();
+        dma_cache_flush(xhci_dev->xmem_pool, dma_buf, len);
+    } else {
+        /* IN: clear DMA buffer, flush so device sees zeroes before DMA */
+        memset(dma_buf, 0, len);
+        wmb();
+        dma_cache_flush(xhci_dev->xmem_pool, dma_buf, len);
+    }
+
+    uint32_t residual = 0;
+    int comp = xhci_submit_bulk_transfer(xhci_dev, slot_id, ep_id,
+                                         dma_buf, len, (bool)data_in, &residual);
+
+    if (comp == COMP_STALL_ERROR) {
+        debug("[XHCI] XFER_SUBMIT STALL slot %u ep %u — resetting EP\n", slot_id, ep_id);
+        xhci_reset_ep(slot_id, ep_id);
+        dma_free(xhci_dev->xmem_pool, dma_buf);
+        ipc_setMR(0, -EBUSY);
+        ipc_setMR(1, 0);
+        ret_info = msginfo_word_new(0, 2, 0, 0);
+        ipc_reply(ret_info);
+        return;
+    }
+
+    if (comp < 0) {
+        /* Device disconnected or other error set by stop_ep */
+        dma_free(xhci_dev->xmem_pool, dma_buf);
+        ret = comp;
+        goto reply_error;
+    }
+
+    bool ok = (comp == COMP_SUCCESS || comp == COMP_SHORT_PACKET);
+    uint32_t actual = ok ? (len - residual) : 0;
+
+    if (data_in && ok) {
+        rmb();
+        dma_cache_invalidate(xhci_dev->xmem_pool, dma_buf, len);
+        memcpy(buf, dma_buf, actual);
+    }
+
+    // debug("[XHCI] XFER_SUBMIT slot %u ep %u dir %s len %u actual %u comp %d\n",
+    //       slot_id, ep_id, data_in ? "IN" : "OUT", len, actual, comp);
+
+    dma_free(xhci_dev->xmem_pool, dma_buf);
+
+    ipc_setMR(0, ok ? 0 : -EIO);
+    ipc_setMR(1, actual);
+    ret_info = msginfo_word_new(0, 2, 0, 0);
+    ipc_reply(ret_info);
+    return;
+
+reply_error:
+    ipc_setMR(0, ret);
+    ipc_setMR(1, 0);
+    ret_info = msginfo_word_new(0, 2, 0, 0);
+    ipc_reply(ret_info);
 }
 
 void handle_config_ep(uint64_t sender, uint64_t info)

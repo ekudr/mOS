@@ -58,7 +58,9 @@ xhci_ring_t *xhci_alloc_transfer_ring(xhci_t *xhci, size_t trb_count)
     return ring;
 }
 
-int xhci_alloc_virt_device(xhci_t *xhci, int slot_id, uint8_t port)
+int xhci_alloc_virt_device(xhci_t *xhci, int slot_id, uint8_t port,
+                            uint8_t parent_slot, uint32_t route_string, uint8_t speed,
+                            uint8_t tt_slot, uint8_t tt_port)
 {
     if (!slot_id || xhci->devs[slot_id]) {
         debug("[XHCI] Bad Slot ID %d\n", slot_id);
@@ -86,8 +88,8 @@ int xhci_alloc_virt_device(xhci_t *xhci, int slot_id, uint8_t port)
 
     xhci_virt_ep_t *ep0 = malloc(sizeof(xhci_virt_ep_t));
     if (!ep0)
-        return -ENOMEM; 
-
+        return -ENOMEM;
+    memset(ep0, 0, sizeof(*ep0));
     dev->eps[0] = ep0;
 
     // Allocate transfer ring for endpoint 0 (control endpoint)
@@ -121,20 +123,24 @@ int xhci_alloc_virt_device(xhci_t *xhci, int slot_id, uint8_t port)
     uint32_t *slot_ctx = &in_ctx[ctx_size/4];
     xhci_slot_ctx_t *slot_context = (xhci_slot_ctx_t *)slot_ctx;
     
-    // Get device speed from port
-    uint32_t portsc = getreg32((uint64_t)&xhci->op_regs->port_status_base + (0x10 * port));
-    dev->port_speed = DEV_PORT_SPEED(portsc);
-    
+    /* Get device speed: from provided value (hub-attached) or PORTSC (root-attached) */
+    if (speed != 0) {
+        dev->port_speed = speed;
+    } else {
+        uint32_t portsc = getreg32((uint64_t)&xhci->op_regs->port_status_base + (0x10 * port));
+        dev->port_speed = DEV_PORT_SPEED(portsc);
+    }
+
     uint32_t speed_code;
     uint32_t max_pockets;
     switch (dev->port_speed) {
-        case 1:     // Full Speed
-            speed_code = 1; 
-            max_pockets = 64;
-            break;
-        case 2:     // Low Speed
+        case 1:     // USB_SPEED_LOW → xHCI Low Speed = 2
             speed_code = 2;
             max_pockets = 8;
+            break;
+        case 2:     // USB_SPEED_FULL → xHCI Full Speed = 1
+            speed_code = 1;
+            max_pockets = 64;
             break;
         case 3: // High Speed
             speed_code = 3; 
@@ -154,12 +160,29 @@ int xhci_alloc_virt_device(xhci_t *xhci, int slot_id, uint8_t port)
             break;
     }
     
-    // Slot Context DWORD 0: Route String (0), Speed, etc.
-//    slot_ctx[0] = (speed_code << 20) | (1 << 27);  
-    slot_context->dev_info = (speed_code << 20) | (1 << 27); // Speed (bits 23:20), Context Entries = 1 (bits 27:31)
-    slot_context->dev_info2 = ((port + 1) << 16);  // Port number (1-based)
-    // Slot Context DWORD 1: Root hub port number (bits 23:16)
-    // slot_ctx[1] = ((port + 1) << 16);  // Port number (1-based)
+    if (parent_slot != 0) {
+        /* Hub-attached device: inherit root port from parent, use provided route string */
+        xhci_virt_dev_t *parent_dev = xhci->devs[parent_slot];
+        uint8_t root_port = 0;
+        if (parent_dev && parent_dev->out_ctx) {
+            uint32_t ctx_size_p = CTX_SIZE(xhci->hcc_params);
+            dma_cache_invalidate(xhci->xmem_pool, parent_dev->out_ctx, ctx_size_p);
+            xhci_slot_ctx_t *pslot = (xhci_slot_ctx_t *)parent_dev->out_ctx;
+            root_port = DEVINFO_TO_ROOT_HUB_PORT(pslot->dev_info2);
+        }
+        uint32_t dev_info_flags = (speed_code << 20) | (1 << 27) | (route_string & ROUTE_STRING_MASK);
+        /* FS/LS through HS hub: set MTT bit and fill tt_info for split transactions */
+        if ((dev->port_speed == 1 || dev->port_speed == 2) && tt_slot != 0) {
+            dev_info_flags |= DEV_MTT;
+            slot_context->tt_info = (uint32_t)tt_slot | ((uint32_t)tt_port << 8);
+        }
+        slot_context->dev_info  = dev_info_flags;
+        slot_context->dev_info2 = ((uint32_t)root_port << 16);
+    } else {
+        /* Root-attached device */
+        slot_context->dev_info  = (speed_code << 20) | (1 << 27);
+        slot_context->dev_info2 = ((uint32_t)(port + 1) << 16);  /* port number (1-based) */
+    }
     
     // Clear rest of slot context
     // for (int i = 2; i < ctx_size/4; i++) {
@@ -223,6 +246,41 @@ int xhci_alloc_virt_device(xhci_t *xhci, int slot_id, uint8_t port)
     //     debug("[XHCI] in_ctx[%d] = 0x%X\n", i, ((uint32_t *)dev->in_ctx)[i]);
     // }
     return SUCCESS;
+}
+
+void xhci_free_virt_device(xhci_t *xhci, uint8_t slot_id)
+{
+    xhci_virt_dev_t *dev = xhci->devs[slot_id];
+    if (!dev)
+        return;
+
+    for (int i = 0; i < EP_CTX_PER_DEV; i++) {
+        if (!dev->eps[i])
+            continue;
+        if (dev->eps[i]->tr_ring) {
+            dma_free(xhci->xmem_pool, dev->eps[i]->tr_ring->trbs);
+            free(dev->eps[i]->tr_ring);
+        }
+        free(dev->eps[i]);
+        dev->eps[i] = NULL;
+    }
+
+    if (dev->in_ctx)
+        dma_free(xhci->xmem_pool, dev->in_ctx);
+    if (dev->out_ctx)
+        dma_free(xhci->xmem_pool, dev->out_ctx);
+
+    /* Clear DCBAA entry before freeing so controller sees no stale pointer */
+    xhci->dcbaap[slot_id] = 0;
+    wmb();
+    // cache_flush((void *)dma_get_phys(xhci->xmem_pool, &xhci->dcbaap[slot_id]),
+    //             sizeof(paddr_t));
+    dma_cache_flush(xhci->xmem_pool, &xhci->dcbaap[slot_id], sizeof(paddr_t));
+
+    free(dev);
+    xhci->devs[slot_id] = NULL;
+
+    debug("[XHCI] Freed device context for slot %u\n", slot_id);
 }
 
 int xhci_mem_init(xhci_t *xhci)
@@ -303,19 +361,7 @@ int xhci_mem_init(xhci_t *xhci)
     return SUCCESS;
 }
 
-static void _inc_enqueue_ptr(xhci_ring_t *ring)
-{
-    // Advance and possibly wrap the enqueue pointer if needed.
-    // maxTrbCount - 1 accounts for the LINK_TRB.
-    if (++ring->enqueue_ptr == ring->max_trb_count - 1) {
-        // Update the Link TRB to reflect the current,
-        // cycle state including the TC flag.
-        ring->trbs[ring->max_trb_count - 1].control =
-            TRB_TYPE(TRB_LINK) | TRB_TC | ring->rcs_bit;
-        ring->enqueue_ptr = 0;
-        ring->rcs_bit = !ring->rcs_bit;
-    }
-}
+/* _inc_enqueue_ptr defined as static inline in xhci.h */
 
 // Dump dma buffer content for debugging
 static void dump_dma_buffer(xhci_t *xhci, void *dma_buffer, size_t length)
@@ -372,8 +418,6 @@ int xhci_ep0_control_transfer(xhci_t *xhci, uint8_t slot_id, usb_control_request
 
     _inc_enqueue_ptr(ring);
 //    trb_count++;
-
-    size_t wait_pos;
 
     // xhci_event_cmd_t *comp_event;
     // DATA stage TRB (if data transfer required)
@@ -444,8 +488,6 @@ int xhci_ep0_control_transfer(xhci_t *xhci, uint8_t slot_id, usb_control_request
 
     trb->control = TRB_TYPE(TRB_STATUS) | direction | (1 << 5) | ring->rcs_bit;  // IOC=1
 
-    wait_pos = ring->enqueue_ptr;
-
     _inc_enqueue_ptr(ring);
 //    trb_count++;
 
@@ -460,24 +502,21 @@ int xhci_ep0_control_transfer(xhci_t *xhci, uint8_t slot_id, usb_control_request
     dma_cache_flush(xhci->xmem_pool, ring->trbs, sizeof(xhci_trb_t) * ring->max_trb_count);
 
     // Ring the endpoint doorbell
+    xhci_virt_ep_t *ep0 = dev->eps[0];
+    __atomic_store_n(&ep0->comp_done, 0, __ATOMIC_RELEASE);
     _ring_control_endpoint_doorbell(xhci, slot_id);
 
-
-//    debug("[XHCI] EP0 control transfer queued for slot %u (%d TRBs)\n", slot_id, trb_count);
-    // Wait for completion
-    size_t timeout_ms = 5000;  // 5 seconds timeout
-    // Wait for the IRQ and let the host controller process the command
-    uint64_t sleep_passed = 0;
-
-    // FIXME: Replace with atomic load and correct irq wait
-    while (__atomic_load_n(&ring->denqueue_ptr, __ATOMIC_RELAXED) != wait_pos) {
-//        sys_wait_irq();
-        udelay(10);
-        sleep_passed += 10;
-        if (sleep_passed > timeout_ms * 1000) {
-            debug("\x1b[31m[xhci]\x1b[0m Transfer timeout %u \n", sleep_passed); 
-            break;
+    // Bounded wait — control xfers normally complete fast, but a stuck device
+    // (e.g., misconfigured TT for LS-through-HS) would freeze the IPC chain.
+#define CTRL_YIELD_BUDGET 2000
+    int yield_count = 0;
+    while (!__atomic_load_n(&ep0->comp_done, __ATOMIC_ACQUIRE)) {
+        if (++yield_count > CTRL_YIELD_BUDGET) {
+            debug("[XHCI] EP0 ctrl xfer timeout slot %u\n", slot_id);
+            dma_free(xhci->xmem_pool, transfer_status_buffer);
+            return -ETIMEOUT;
         }
+        sched_yield();
     }
 
     // rmb();

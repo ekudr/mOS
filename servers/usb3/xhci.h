@@ -915,6 +915,13 @@ typedef struct xhci_virt_ep
 {
     xhci_ring_t *tr_ring;
     uint16_t    max_packet;
+    /* async completion state — set by IRQ handler, polled by transfer submitter */
+    volatile int        comp_done;
+    volatile int        comp_code;
+    volatile uint32_t   residual;
+    /* deferred IPC reply (Stage 3 — cross-process bulk/int completion) */
+    uint64_t    deferred_sender;
+    pid_t       waiter_pid;
 } xhci_virt_ep_t;
 
 #define EP_CTX_PER_DEV		31
@@ -934,9 +941,7 @@ typedef struct xhci_port {
 	int			hw_portnum;
 	int			portnum;
     int         device_connected;
-//	struct xhci_hub		*rhub;
-//	struct xhci_port_cap	*port_cap;
-//	unsigned int		lpm_incapable:1;
+    int         device_disconnected;
 	uint8_t		maj_rev;
 	uint8_t		min_rev;
 } xhci_port_t;
@@ -983,13 +988,24 @@ typedef struct xhci
     list_head_t competion_events;
     xhci_event_cmd_t *completion_trb;
     uint32_t    hub_events;
-#define XHCI_HUB_EVENT_PORT_CHANGE  0x1
+#define XHCI_HUB_EVENT_PORT_CHANGE      0x1
+#define XHCI_HUB_EVENT_PORT_DISCONNECT  0x2
     uint8_t     active_port;
 
     xhci_port_t *hw_ports;
 
 } xhci_t;
 
+
+static inline void _inc_enqueue_ptr(xhci_ring_t *ring)
+{
+    if (++ring->enqueue_ptr == ring->max_trb_count - 1) {
+        ring->trbs[ring->max_trb_count - 1].control =
+            TRB_TYPE(TRB_LINK) | TRB_TC | ring->rcs_bit;
+        ring->enqueue_ptr = 0;
+        ring->rcs_bit = !ring->rcs_bit;
+    }
+}
 
 static inline bool _has_unprocessed_events(xhci_ring_t *event_ring)
 {
@@ -1039,7 +1055,9 @@ int xhci_init(void *base_addr, int irq);
 int xhci_start_host();
 
 int xhci_mem_init(xhci_t *xhci);
-int xhci_alloc_virt_device(xhci_t *xhci, int slot_id, uint8_t port);
+int xhci_alloc_virt_device(xhci_t *xhci, int slot_id, uint8_t port,
+                            uint8_t parent_slot, uint32_t route_string, uint8_t speed,
+                            uint8_t tt_slot, uint8_t tt_port);
 xhci_ring_t *xhci_alloc_transfer_ring(xhci_t *xhci, size_t trb_count);
 xhci_event_cmd_t *xhci_send_command(xhci_t *xhci, xhci_trb_t *trb, uint32_t timeout_ms);
 uint8_t xhci_enable_device_slot();
@@ -1056,8 +1074,15 @@ int xhci_set_configuration(xhci_t *xhci, uint8_t slot_id, uint8_t config_value);
 int xhci_set_address(xhci_t *xhci, uint8_t slot_id, uint8_t device_address);
 int xhci_enumerate_device(uint8_t slot_id);
 const char* _usb_speed_to_string(uint8_t speed);
-int _handle_new_device(uint8_t port_id);
+//int _handle_new_device(uint8_t port_id);
 int xhci_configure_endpoint(uint8_t slot_id) ;
 int xhci_config_eps(xhci_t *xhci, uint8_t slot_id, uint8_t ep_nums, usb_ep_desc_t *ep_desc);
 void _dump_device_context(xhci_virt_dev_t *dev);
+int xhci_disable_device_slot(uint8_t slot_id);
+int xhci_stop_ep(uint8_t slot_id, uint8_t ep_id);
+int xhci_reset_ep(uint8_t slot_id, uint8_t ep_id);
+void xhci_free_virt_device(xhci_t *xhci, uint8_t slot_id);
+int xhci_submit_bulk_transfer(xhci_t *xhci, uint8_t slot_id, uint8_t ep_id,
+                               void *buf, uint32_t len, bool data_in,
+                               uint32_t *out_residual);
 #endif /* __XHCI_H__ */

@@ -61,8 +61,8 @@ int main()
                 break;
             }
 
-            case IPC_SRC_HUB: {
- //               handle_hub_ipc(sender, info);
+            case IPC_SRC_CLASS: {
+                handle_class_ipc(sender, info);
                 break;
             }
 

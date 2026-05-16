@@ -38,6 +38,12 @@ int usb_core_init();
  */
 void handle_usb_events(void);
 
+/**
+ * Handle IPC messages from class drivers (hub, hid, msc, …)
+ * @param sender Sender capability
+ * @param info IPC message info
+ */
+void handle_class_ipc(uint64_t sender, uint64_t info);
 
 
 #endif /* __USB_CORE_H__ */
