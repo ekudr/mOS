@@ -49,4 +49,10 @@ uint64_t __sys_task_control(void);
 uint64_t __sys_cache_flush(void);
 uint64_t __sys_cache_inval(void);
 
+uint64_t __sys_notif_create(void);
+uint64_t __sys_signal(void);
+uint64_t __sys_notif_bind(void);
+uint64_t __sys_notif_unbind(void);
+uint64_t __sys_irq_bind_notif(void);
+
 #endif /* __SYSPROC_H__ */

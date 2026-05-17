@@ -21,7 +21,7 @@ kerrno_t ns_register_cap(int cap_id, char *name, uint32_t rights)
     strncpy(msg->name, name, sizeof(msg->name)-1);
 
     // Copy cap to nameserver
-    int ns_cap = cap_grant(cap_id, pid, -1, rights);
+    int ns_cap = cap_grant(cap_id, pid, -1, rights, 0);
     if (ns_cap < 0) {
         debug("Error granting cap %d \n", ns_cap);
         for(;;);

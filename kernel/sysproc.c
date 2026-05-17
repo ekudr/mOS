@@ -9,6 +9,7 @@
 #include <khash.h>
 #include <irq.h>
 #include <cap.h>
+#include <notification.h>
 
 int sbi_debug_console_write(const char *bytes, unsigned int num_bytes);
 
@@ -185,12 +186,13 @@ uint64_t sys_snd_sig(void)
 
 uint64_t sys_cap_grnt(void)
 {
-    uint64_t from_id, to_pid, to_slot, req_rights;
+    uint64_t from_id, to_pid, to_slot, req_rights, badge;
     from_id     = syscall_argraw(0);
     to_pid      = syscall_argraw(1);
-    to_slot     = syscall_argraw(2); 
-    req_rights  = syscall_argraw(3); 
-    return sys_cap_grant((int)from_id, to_pid, (int)to_slot, (uint32_t)req_rights);
+    to_slot     = syscall_argraw(2);
+    req_rights  = syscall_argraw(3);
+    badge       = syscall_argraw(4);
+    return sys_cap_grant((int)from_id, to_pid, (int)to_slot, (uint32_t)req_rights, badge);
 }
 
 // uint64_t __sys_cap_transfer(void)
@@ -360,4 +362,39 @@ uint64_t __sys_task_control(void)
     err = sched_task_control(mytask());
 
     return err;
+}
+
+uint64_t __sys_notif_create(void)
+{
+    int ret = sys_notification_create(mytask());
+    if (ret < 0) __sys_error_return(mytask(), ret);
+    return (uint64_t)ret;
+}
+
+uint64_t __sys_signal(void)
+{
+    int ret = sys_notification_signal(mytask());
+    if (ret < 0) __sys_error_return(mytask(), ret);
+    return (uint64_t)ret;
+}
+
+uint64_t __sys_notif_bind(void)
+{
+    int ret = sys_notification_bind(mytask());
+    if (ret < 0) __sys_error_return(mytask(), ret);
+    return (uint64_t)ret;
+}
+
+uint64_t __sys_notif_unbind(void)
+{
+    int ret = sys_notification_unbind(mytask());
+    if (ret < 0) __sys_error_return(mytask(), ret);
+    return (uint64_t)ret;
+}
+
+uint64_t __sys_irq_bind_notif(void)
+{
+    int ret = sys_irq_bind_notification(mytask());
+    if (ret < 0) __sys_error_return(mytask(), ret);
+    return (uint64_t)ret;
 }

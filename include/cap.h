@@ -14,9 +14,10 @@ struct task;
 
 typedef struct cap_entry
 {
-    uint32_t type;    
-    uint32_t   rights;
-    struct kobject  *obj;
+    uint32_t        type;
+    uint32_t        rights;
+    struct kobject *obj;
+    uint64_t        badge;  // per-cap badge for CAP_NOTIFICATION (ORed into notif->word on signal)
 } cap_entry_t;
 
 typedef struct cap_node
@@ -62,9 +63,9 @@ void cap_free(struct task *t, int id);
 int sys_capability_create(struct task *t);
 int sys_endpoint_create(struct task *t);
 
-long sys_cap_grant(int from_id, uint64_t to_pid, int to_slot, uint32_t req_rights);
+long sys_cap_grant(int from_id, uint64_t to_pid, int to_slot, uint32_t req_rights, uint64_t badge);
 int cap_grant_into(struct task *from, int from_cap_id, \
-                    struct task *to, int to_slot, uint32_t req_rights);
+                    struct task *to, int to_slot, uint32_t req_rights, uint64_t badge);
 int sys_cap_transfer(int src_cap, int dest_cap, uint32_t req_rights);
 int sys_cap_shmem_create(struct task *t);
 cap_node_t *cap_create_node(struct task *t);

@@ -2,6 +2,7 @@
 #include <sched.h>
 #include <khash.h>
 #include <irq.h>
+#include <notification.h>
 
 irq_manager_t   *gp_irqm;
 
@@ -17,6 +18,9 @@ kerrno_t irq_set(int irq, task_t *t, int flags)
     e->hartid = current_cpu->hartid;
     e->irq    = irq;
     e->task   = t;
+
+    e->notif = NULL;
+    e->badge = 0;
 
 //    debug("IRQ set 0x%lX for irq %d\n", t, irq); 
     acquire(&gp_irqm->lock);
@@ -41,14 +45,35 @@ kerrno_t irq_act(int irq, task_t *t, int flags)
     return SUCCESS;
 }
 
+kerrno_t irq_bind_notification(int irq, notification_t *notif, uint64_t badge)
+{
+    acquire(&gp_irqm->lock);
+    irq_entry_t *e = khash_lookup(gp_irqm->irq_table, irq);
+    release(&gp_irqm->lock);
+
+    if (e == NULL) return -ENOENT;
+
+    // Drop old notification ref if re-binding
+    if (e->notif != NULL)
+        ko_put((kobject_t *)e->notif, CAP_NOTIFICATION, NULL);
+
+    e->notif  = (notification_t *)ko_get((kobject_t *)notif);
+    e->badge  = badge;
+    return SUCCESS;
+}
+
 kerrno_t irq_send_signal(int irq)
 {
-//    debug("Active Task return 0x%lX\n", mytask());
     irq_entry_t *e = khash_lookup(gp_irqm->irq_table, irq);
-//    debug("Task return 0x%lX for irq %d\n", t, irq);
-    
+
     if ((e == NULL) || (e->task == NULL))
         return -ENOENT;
+
+    // Prefer notification delivery if bound
+    if (e->notif != NULL) {
+        notification_signal(e->notif, e->badge ? e->badge : 1ULL);
+        return SUCCESS;
+    }
 
     return signal_send(e->task, SIGNAL_IRQ, irq);
 }

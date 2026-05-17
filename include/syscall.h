@@ -62,4 +62,10 @@
 
 #define SYS_cap_free 106
 
+#define SYS_notif_create  110
+#define SYS_signal        111
+#define SYS_notif_bind    112
+#define SYS_notif_unbind  113
+#define SYS_irq_bind_notif 114
+
 #endif /* _SYSCALL_H */

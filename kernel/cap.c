@@ -7,6 +7,7 @@
 #include <shmem.h>
 #include <sysproc.h>
 #include <memory.h>
+#include <notification.h>
 
 
 
@@ -104,24 +105,24 @@ int cap_install(struct task *t, void *obj, cap_type_t type, uint32_t rights)
     return cap_id;
 }
 
-int _cap_install(struct task *t, cap_entry_t *parent, void *obj, cap_type_t type, uint32_t rights)
-{
-    if (!t || !obj || !type) return -EINVAL;
+// int _cap_install(struct task *t, cap_entry_t *parent, void *obj, cap_type_t type, uint32_t rights)
+// {
+//     if (!t || !obj || !type) return -EINVAL;
 
-    acquire(&t->cap_lock);
-    int cap_id = cap_find_free_cap(t);
-    release(&t->cap_lock);
+//     acquire(&t->cap_lock);
+//     int cap_id = cap_find_free_cap(t);
+//     release(&t->cap_lock);
     
-    if (cap_id < 0) return cap_id;
+//     if (cap_id < 0) return cap_id;
 
-    cap_entry_t *ce = cap_lookup(t, cap_id);
-    if (!ce) return -ENOSPC; // ??? need right err no
+//     cap_entry_t *ce = cap_lookup(t, cap_id);
+//     if (!ce) return -ENOSPC; // ??? need right err no
 
-    cap_insert(ce, obj, type, rights);
+//     cap_insert(ce, obj, type, rights);
 
 
-    return cap_id;
-}
+//     return cap_id;
+// }
 
 void cap_destroy(kobject_t *ko, uint32_t type)
 {
@@ -400,7 +401,7 @@ int sys_capability_create(task_t *t)
 * tasks' cap tables in a consistent order to avoid deadlocks.
 */
 int cap_grant_into(task_t *from, int from_cap_id,
-                    task_t *to, int to_slot, uint32_t req_rights)
+                    task_t *to, int to_slot, uint32_t req_rights, uint64_t badge)
 {
     cap_entry_t *from_ce, *to_ce;
     void *obj;
@@ -476,9 +477,10 @@ int cap_grant_into(task_t *from, int from_cap_id,
 //        debug("\x1b[31m[CAP]\x1b[0m to_ce 0x%lX\n", to_ce);
     }
 
-    // Install capability into recipient's cap table 
+    // Install capability into recipient's cap table
     cap_insert(to_ce, obj, from_ce->type, req_rights);
-    
+    to_ce->badge = badge;
+
     new_cap = i;
 
 out_unlock:
@@ -501,13 +503,12 @@ out_unlock:
 }
 
 
-long sys_cap_grant(int from_id, uint64_t to_pid, int to_slot, uint32_t req_rights)
+long sys_cap_grant(int from_id, uint64_t to_pid, int to_slot, uint32_t req_rights, uint64_t badge)
 {
     task_t *from = mytask();
     task_t *to = sched_find_task(to_pid);
     if (!to) return -ENOENT;
-//    debug("[CAP] transfer cap from %d 0x%lX to %d 0x%lX\n", from->pid, from_id, to_pid, to_slot);
-    return cap_grant_into(from, from_id, to, to_slot,req_rights);
+    return cap_grant_into(from, from_id, to, to_slot, req_rights, badge);
 }
 
 /*

@@ -180,6 +180,8 @@ typedef struct task
 //    void                *irq_handler;
     list_head_t         eplist;             // link to endpoint list
     void                *ipc_buf;
+    struct notification *bound_notif;       // bound notification (strong ref via ko_get)
+    uint64_t             notif_word;        // notification word staged by notification_signal
     struct spinlock     cap_lock;
     cap_entry_t         caps[MAX_CAPS];
 

@@ -86,7 +86,7 @@ int vfs_create(const char *path, inode_type_t type, int cap_id)
     int vfsid = get_vfs_cap();
 
     // Copy cap to vfs
-    int tr_cap = cap_grant(cap_id, pid, -1, CRIGHT_SND | CRIGHT_GRANT);
+    int tr_cap = cap_grant(cap_id, pid, -1, CRIGHT_SND | CRIGHT_GRANT, 0);
     if (tr_cap < 0) return tr_cap;    
 
     memset(msg, 0, sizeof(struct vfs_msg));    

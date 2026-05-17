@@ -29,6 +29,8 @@
 #define MSGINFO_FLAGS_SHIFT   0
 #define MSGINFO_FLAGS_MASK    ((1ULL << MSGINFO_FLAGS_BITS)-1)
 
+#define MSGINFO_NOTIFICATION  0x01  // flag: delivery is from a notification, not IPC
+
 typedef uint64_t msg_info_t;
 
 #define label_from_msginfo_word(w) (((msg_info_t)w >> MSGINFO_LABEL_SHIFT) & MSGINFO_LABEL_MASK) 
@@ -196,5 +198,19 @@ void ipc_send(uint64_t dest, msg_info_t info);
 void ipc_nb_send(uint64_t dest, msg_info_t info);
 uint64_t ipc_call(uint64_t dest, msg_info_t info);
 void ipc_reply(msg_info_t info);
+
+// Notification API
+int  notif_create(uint32_t rights);
+void notif_signal(uint64_t notif_cap);
+int  notif_bind(uint64_t notif_cap);
+void notif_unbind(void);
+uint64_t notif_wait(uint64_t notif_cap);
+int  notif_poll(uint64_t notif_cap, uint64_t *word_out);
+int  irq_bind_notif(uint64_t irq, uint64_t notif_cap);
+
+static inline int msginfo_is_notification(msg_info_t info)
+{
+    return (info & MSGINFO_FLAGS_MASK) & MSGINFO_NOTIFICATION;
+}
 
 #endif /* __LIBSYS_IPC_H__ */

@@ -9,7 +9,7 @@ typedef uint32_t cap_rights_t;
 
 int create_capability(cap_type_t type, cap_rights_t rights);
 // int cap_transfer(int src_cap, int dest_cap, uint32_t req_rights);
-int cap_grant(int from_id, uint64_t to_pid, int to_slot, uint32_t req_rights);
+int cap_grant(int from_id, uint64_t to_pid, int to_slot, uint32_t req_rights, uint64_t badge);
 
 int cap_shmem_create(uint64_t size, cap_rights_t rights);
 int cap_dmamem_create(uint64_t size, cap_rights_t rights, uint64_t *paddr);

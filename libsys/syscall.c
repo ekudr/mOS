@@ -181,3 +181,54 @@ int cap_create(uint64_t dest, msg_info_t info)
     return o_info;
 }
 
+// Notification wrappers
+
+int notif_create(uint32_t rights)
+{
+    return (int)__syscall(SYS_notif_create, 0, (uint64_t)rights);
+}
+
+void notif_signal(uint64_t notif_cap)
+{
+    __syscall(SYS_signal, notif_cap);
+}
+
+int notif_bind(uint64_t notif_cap)
+{
+    register uint64_t a0 asm("a0") = notif_cap;
+    register uint64_t scno asm("a7") = SYS_notif_bind;
+    asm volatile("ecall" : "+r"(a0) : "r"(scno) : "memory");
+    return (int)a0;
+}
+
+void notif_unbind(void)
+{
+    register uint64_t scno asm("a7") = SYS_notif_unbind;
+    asm volatile("ecall" :: "r"(scno) : "memory");
+}
+
+uint64_t notif_wait(uint64_t notif_cap)
+{
+    uint64_t badge = 0, dummy = 0;
+    msg_info_t info = 0;
+    syscall_recv(SYS_recv, notif_cap, &badge, &info, &dummy, &dummy, &dummy, &dummy, &dummy);
+    return badge;
+}
+
+int notif_poll(uint64_t notif_cap, uint64_t *word_out)
+{
+    uint64_t badge = 0, dummy = 0;
+    msg_info_t info = 0;
+    syscall_recv(SYS_nb_recv, notif_cap, &badge, &info, &dummy, &dummy, &dummy, &dummy, &dummy);
+    if (word_out) *word_out = badge;
+    return badge ? 0 : -1;
+}
+
+int irq_bind_notif(uint64_t irq, uint64_t notif_cap)
+{
+    register uint64_t a0 asm("a0") = irq;
+    register uint64_t a1 asm("a1") = notif_cap;
+    register uint64_t scno asm("a7") = SYS_irq_bind_notif;
+    asm volatile("ecall" : "+r"(a0) : "r"(a1), "r"(scno) : "memory");
+    return (int)a0;
+}

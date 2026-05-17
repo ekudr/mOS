@@ -73,6 +73,8 @@ inline uint64_t msginfo_word_new(uint32_t label, uint16_t length, uint8_t caps, 
 #define IPC_NOWAIT  0x01     // do not sleep task (non-blocking ipc)
 #define IPC_EXIST   0x02     // do not create new
 
+#define MSGINFO_NOTIFICATION  0x01  // flag: delivery is from a notification, not IPC
+
 struct ipc_manager
 {
     spinlock_t lock;

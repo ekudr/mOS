@@ -31,7 +31,7 @@ kerrno_t devman_register(const char *name, cap_id_t driver_cap)
     dm_msg_t *msg = (dm_msg_t *)get_ipc_buffer()->msg;
     
     // Grant capability to devman
-    int ns_cap = cap_grant(driver_cap, pid, -1, CRIGHT_SND | CRIGHT_GRANT);
+    int ns_cap = cap_grant(driver_cap, pid, -1, CRIGHT_SND | CRIGHT_GRANT, 0);
     if (ns_cap < 0) {
         debug("Error granting cap %d \n", ns_cap);
         for(;;);

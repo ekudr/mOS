@@ -11,6 +11,7 @@ typedef enum {
     KO_FRAME,
     KO_SHMEM,
     KO_TASK,
+    KO_NOTIFICATION,
 } ko_type_t;
 
 //#define KO_OWNER(ko)    (((kobject_t *)ko)->owner)

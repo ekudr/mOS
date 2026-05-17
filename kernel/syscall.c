@@ -163,6 +163,12 @@ static uint64_t (*syscalls[])(void) = {
     [SYS_cap_free]  = __sys_cap_free,
     [SYS_task_ctrl] = __sys_task_control,
 
+    [SYS_notif_create]   = __sys_notif_create,
+    [SYS_signal]         = __sys_signal,
+    [SYS_notif_bind]     = __sys_notif_bind,
+    [SYS_notif_unbind]   = __sys_notif_unbind,
+    [SYS_irq_bind_notif] = __sys_irq_bind_notif,
+
 };
 
 void

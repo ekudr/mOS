@@ -5,6 +5,7 @@
 #include <shmem.h>
 #include <khash.h>
 #include <sysproc.h>
+#include <notification.h>
 
 const int msgRegisters[] = {
     2, 3, 4, 5, 6
@@ -64,7 +65,7 @@ static uint8_t ipc_caps_transfer(uint64_t info, task_t *sender, task_t *receiver
 
     for (i = 0; i < IPC_MAX_CAPS && sender_caps[i]!= 0 && i < n; i++) {
         // ??? check what rights should be provide
-        receiver_caps[i] = cap_grant_into(sender, sender_caps[i], receiver, -1, 0);
+        receiver_caps[i] = cap_grant_into(sender, sender_caps[i], receiver, -1, 0, 0);
     }
 
 
@@ -201,10 +202,31 @@ int sys_ipc_recieve(task_t *t, int cap_id, bool is_blocking)
     cap_entry_t *ce = cap_lookup(t, cap_id);
 
     if (!ce) return -ERR_CAP_INVAL;
+
+    // CAP_NOTIFICATION: polymorphic dispatch to notification_wait
+    if (ce->type == CAP_NOTIFICATION) {
+        if (!(ce->rights & CRIGHT_RCV)) return -EPERM;
+        return notification_wait(t, (notification_t *)ce->obj, is_blocking);
+    }
+
     if (ce->type != CAP_ENDPOINT || !(ce->rights & CRIGHT_RCV)){
         return -EPERM;
-    }      
-   
+    }
+
+    // Fast-path: drain bound notification before touching endpoint
+    if (t->bound_notif != NULL) {
+        notification_t *notif = t->bound_notif;
+        acquire(&notif->lock);
+        uint64_t w = __atomic_exchange_n(&notif->word, 0, __ATOMIC_ACQ_REL);
+        if (w != 0) {
+            release(&notif->lock);
+            syscall_set_MR(t, 0, w);
+            syscall_set_MR(t, 1, msginfo_word_new(0, 0, 0, MSGINFO_NOTIFICATION));
+            return SUCCESS;
+        }
+        release(&notif->lock);
+    }
+
     endpoint_t *ep = (endpoint_t *)ce->obj;
 
     acquire(&ep->lock);
@@ -212,15 +234,28 @@ int sys_ipc_recieve(task_t *t, int cap_id, bool is_blocking)
     switch (ep->state)
     {
     case EP_STATE_IDLE:
-    case EP_STATE_RECV:  
+    case EP_STATE_RECV:
 
         if (is_blocking) {
             list_add_tail(&ep->queue, &t->eplist);
             ep->state = EP_STATE_RECV;
             sched_task_block(ep, &ep->lock, BLOCKED_RECV);
-//            sched_task_sleep(t, KO_LOCK(ep));
+            // Woke up. Check whether a notification woke us instead of IPC.
+            if (t->notif_word != 0) {
+                uint64_t w = t->notif_word;
+                t->notif_word = 0;
+                // Remove from endpoint queue if not already dequeued by IPC sender
+                if (t->eplist.next != NULL) {
+                    list_del(&t->eplist);
+                    if (list_is_empty(&ep->queue)) ep->state = EP_STATE_IDLE;
+                }
+                release(&ep->lock);
+                syscall_set_MR(t, 0, w);
+                syscall_set_MR(t, 1, msginfo_word_new(0, 0, 0, MSGINFO_NOTIFICATION));
+                return SUCCESS;
+            }
         } else {
-            // set a0 = 0 (bange)
+            // set a0 = 0 (badge)
             syscall_set_MR(t, 0, 0);
         }
         break;

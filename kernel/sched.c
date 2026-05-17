@@ -7,6 +7,7 @@
 #include <cap.h>
 #include <sysproc.h>
 #include <fpu.h>
+#include <notification.h>
 
 struct cpu cpus[NCPUS];
 
@@ -469,6 +470,7 @@ int sched_taskfree(task_t *t)
 //        sched_task_freepagetable(t->pagetable, t->sz);
     if (t->kstack)
         kstack_free(t->kstack);
+    notification_on_task_exit(t);
     mfree(t);
     return 0;
 }
