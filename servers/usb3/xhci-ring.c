@@ -223,6 +223,56 @@ int xhci_submit_bulk_transfer(xhci_t *xhci, uint8_t slot_id, uint8_t ep_id,
     return ep->comp_code;
 }
 
+int xhci_arm_bulk_transfer(xhci_t *xhci, uint8_t slot_id, uint8_t ep_id,
+                            void *buf, uint32_t len, bool data_in)
+{
+    if (!xhci || !slot_id || ep_id == 0) return -EINVAL;
+
+    xhci_virt_dev_t *dev = xhci->devs[slot_id];
+    if (!dev) return -EINVAL;
+
+    xhci_virt_ep_t *ep = dev->eps[ep_id - 1];
+    if (!ep || !ep->tr_ring) return -EINVAL;
+
+    xhci_ring_t *ring   = ep->tr_ring;
+    paddr_t      buf_pa = dma_get_phys(xhci->xmem_pool, buf);
+
+    uint32_t remaining = len;
+    uint32_t offset    = 0;
+
+    while (remaining > 0) {
+        uint32_t trb_len = remaining > XFER_TRB_MAX_LEN ? XFER_TRB_MAX_LEN : remaining;
+        bool     is_last = (remaining - trb_len == 0);
+
+        xhci_trb_t *trb = &ring->trbs[ring->enqueue_ptr];
+        memset(trb, 0, sizeof(xhci_trb_t));
+
+        trb->parameter = buf_pa + offset;
+        trb->status    = TRB_LEN(trb_len) | TRB_INTR_TARGET(0);
+
+        uint32_t ctrl = TRB_TYPE(TRB_NORMAL) | ring->rcs_bit;
+        if (!is_last)
+            ctrl |= TRB_CHAIN;
+        else
+            ctrl |= TRB_IOC;
+        if (data_in)
+            ctrl |= TRB_ISP;
+
+        trb->control = ctrl;
+        _inc_enqueue_ptr(ring);
+        offset    += trb_len;
+        remaining -= trb_len;
+    }
+
+    wmb();
+    dma_cache_flush(xhci->xmem_pool, ring->trbs,
+                    sizeof(xhci_trb_t) * ring->max_trb_count);
+
+    __atomic_store_n(&ep->comp_done, 0, __ATOMIC_RELEASE);
+    _ring_doorbell(xhci, slot_id, ep_id);
+    return 0;
+}
+
 int xhci_config_eps(xhci_t *xhci, uint8_t slot_id, uint8_t ep_nums, usb_ep_desc_t *ep_desc)
 {
     if (!xhci || slot_id == 0 || ep_nums == 0 || !ep_desc) {

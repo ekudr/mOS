@@ -6,6 +6,7 @@
 #include <cap.h>
 #include <signals.h>
 #include <libsys/barrier.h>
+#include <libsys/ipc.h>
 #include <sched.h>
 
 #include "main.h"
@@ -518,6 +519,23 @@ int xhci_stop_ep(uint8_t slot_id, uint8_t ep_id)
         ep->waiter_pid = 0;
     }
 
+    /* Drain any in-flight async URB with ENOENT */
+    pending_urb_t *pu = &ep->pending_urb;
+    if (pu->valid) {
+        class_client_t *cc = pu->client;
+        if (pu->dma_buf) {
+            dma_free(xhci_dev->xmem_pool, pu->dma_buf);
+            pu->dma_buf = NULL;
+        }
+        urb_result_t *r = &cc->result_table[URB_RES_IDX(slot_id, ep_id)];
+        r->status = -ENOENT;
+        r->actual  = 0;
+        wmb();
+        __atomic_store_n(&r->valid, 1, __ATOMIC_RELEASE);
+        notif_signal(cc->notif_cap);
+        pu->valid = 0;
+    }
+
     debug("[XHCI] Stopped endpoint %u on slot %u\n", ep_id, slot_id);
     return SUCCESS;
 }
@@ -618,6 +636,30 @@ static void handle_transfer_event(xhci_t *xhci, xhci_trb_t *trb)
     ep->residual  = transfer_event->transfer_length;
     wmb();
     __atomic_store_n(&ep->comp_done, 1, __ATOMIC_RELEASE);
+
+    pending_urb_t *pu = &ep->pending_urb;
+    if (pu->valid) {
+        class_client_t *cc = pu->client;
+        uint8_t  comp  = (uint8_t)transfer_event->complition_code;
+        bool     ok    = (comp == COMP_SUCCESS || comp == COMP_SHORT_PACKET);
+        uint32_t actual = ok ? (pu->len - transfer_event->transfer_length) : 0;
+
+        if (pu->dir == USB_DIR_IN && ok) {
+            rmb();
+            dma_cache_invalidate(xhci->xmem_pool, pu->dma_buf, pu->len);
+            memcpy((uint8_t *)cc->data_shm + pu->offset, pu->dma_buf, actual);
+        }
+        dma_free(xhci->xmem_pool, pu->dma_buf);
+        pu->dma_buf = NULL;
+
+        urb_result_t *r = &cc->result_table[URB_RES_IDX(slot_id, transfer_event->ep_id)];
+        r->status = ok ? 0 : (int8_t)(comp == COMP_STOPPED ? -ENOENT : -EIO);
+        r->actual  = actual;
+        wmb();
+        __atomic_store_n(&r->valid, 1, __ATOMIC_RELEASE);
+        notif_signal(cc->notif_cap);
+        pu->valid = 0;
+    }
     // debug("\x1b[31m[xhci]\x1b[0m Transfer Event: slot %u EP%u status 0x%x length %u\n", 
     //       slot_id, transfer_event->ep_id-1, transfer_event->complition_code, transfer_event->transfer_length);
 

@@ -18,5 +18,8 @@ void handle_update_ep0_mps(uint64_t sender, uint64_t info);
 void handle_disable_slot(uint64_t sender, uint64_t info);
 void handle_stop_ep(uint64_t sender, uint64_t info);
 void handle_xfer_submit(uint64_t sender, uint64_t info);
+void handle_register_client(uint64_t sender, uint64_t info);
+void handle_unregister_client(uint64_t sender, uint64_t info);
+void handle_direct_xfer_submit(uint64_t sender, uint64_t info);
 
 #endif /* __USB3_MAIN_H__ */

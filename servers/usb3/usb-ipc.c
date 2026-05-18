@@ -1,6 +1,7 @@
 #include <mosstd.h>
 #include <cap.h>
 #include <libsys/ipc.h>
+#include <ipc.h>
 #include <vfs.h>
 #include <devman.h>
 #include <sched.h>
@@ -400,6 +401,132 @@ reply_error:
     ipc_setMR(1, 0);
     ret_info = msginfo_word_new(0, 2, 0, 0);
     ipc_reply(ret_info);
+}
+
+static class_client_t *find_client_by_slot(uint8_t slot_id)
+{
+    for (int i = 0; i < MAX_CLASS_CLIENTS; i++) {
+        if (xhci_dev->class_clients[i].slot_id == slot_id)
+            return &xhci_dev->class_clients[i];
+    }
+    return NULL;
+}
+
+void handle_register_client(uint64_t sender, uint64_t info)
+{
+    usb_host_cmd_t *cmd = (usb_host_cmd_t *)get_ipc_buffer()->msg;
+    uint8_t  slot_id    = cmd->register_client.slot_id;
+    // notif_cap is granted by usb-core with badge=1 (not IPC-transferred)
+    cap_id_t notif_cap  = (cap_id_t)cmd->register_client.notif_cap;
+
+    cap_id_t data_shm_cap   = (cap_id_t)ipc_get_cap(0);
+    cap_id_t result_shm_cap = (cap_id_t)ipc_get_cap(1);
+
+    for (int i = 0; i < MAX_CLASS_CLIENTS; i++) {
+        class_client_t *cc = &xhci_dev->class_clients[i];
+        if (cc->slot_id != 0)
+            continue;
+
+        cc->slot_id        = slot_id;
+        cc->notif_cap      = notif_cap;
+        cc->data_shm_cap   = data_shm_cap;
+        cc->data_shm       = ipc_shm_attach(data_shm_cap, NULL, 0);
+        cc->result_shm_cap = result_shm_cap;
+        cc->result_table   = (urb_result_t *)ipc_shm_attach(result_shm_cap, NULL, 0);
+
+        debug("[XHCI] Registered class client slot=%u idx=%d notif=0x%x data=%p result=%p\n",
+              slot_id, i, notif_cap, cc->data_shm, cc->result_table);
+        ipc_setMR(0, 0);
+        ipc_reply(msginfo_word_new(0, 1, 0, 0));
+        return;
+    }
+
+    debug("[XHCI] No free class client slot\n");
+    ipc_setMR(0, -ENOSPC);
+    ipc_reply(msginfo_word_new(0, 1, 0, 0));
+}
+
+void handle_unregister_client(uint64_t sender, uint64_t info)
+{
+    usb_host_cmd_t *cmd = (usb_host_cmd_t *)get_ipc_buffer()->msg;
+    uint8_t slot_id = cmd->register_client.slot_id;
+
+    class_client_t *cc = find_client_by_slot(slot_id);
+    if (cc) {
+        memset(cc, 0, sizeof(*cc));
+        debug("[XHCI] Unregistered class client slot=%u\n", slot_id);
+    }
+
+    ipc_setMR(0, 0);
+    ipc_reply(msginfo_word_new(0, 1, 0, 0));
+}
+
+void handle_direct_xfer_submit(uint64_t sender, uint64_t info)
+{
+    int ret;
+    usb_host_cmd_t *cmd = (usb_host_cmd_t *)get_ipc_buffer()->msg;
+    uint8_t  slot_id = cmd->direct_xfer.slot_id;
+    uint8_t  ep_id   = cmd->direct_xfer.ep_id;
+    uint8_t  dir     = cmd->direct_xfer.dir;
+    uint32_t len     = cmd->direct_xfer.len;
+    uint32_t offset  = cmd->direct_xfer.offset;
+
+    class_client_t *cc = find_client_by_slot(slot_id);
+    if (!cc) {
+        ipc_setMR(0, -EPERM);
+        ipc_reply(msginfo_word_new(0, 1, 0, 0));
+        return;
+    }
+
+    xhci_virt_dev_t *dev = xhci_dev->devs[slot_id];
+    if (!dev || !dev->eps[ep_id - 1] || !dev->eps[ep_id - 1]->tr_ring) {
+        ipc_setMR(0, -EINVAL);
+        ipc_reply(msginfo_word_new(0, 1, 0, 0));
+        return;
+    }
+
+    xhci_virt_ep_t *ep = dev->eps[ep_id - 1];
+    if (ep->pending_urb.valid) {
+        ipc_setMR(0, -EBUSY);
+        ipc_reply(msginfo_word_new(0, 1, 0, 0));
+        return;
+    }
+
+    void *dma_buf = dma_alloc(xhci_dev->xmem_pool, len, 64);
+    if (!dma_buf) {
+        ipc_setMR(0, -ENOMEM);
+        ipc_reply(msginfo_word_new(0, 1, 0, 0));
+        return;
+    }
+
+    if (dir == USB_DIR_OUT) {
+        memcpy(dma_buf, (uint8_t *)cc->data_shm + offset, len);
+        wmb();
+        dma_cache_flush(xhci_dev->xmem_pool, dma_buf, len);
+    } else {
+        memset(dma_buf, 0, len);
+        wmb();
+        dma_cache_flush(xhci_dev->xmem_pool, dma_buf, len);
+    }
+
+    ep->pending_urb.valid   = 1;
+    ep->pending_urb.slot_id = slot_id;
+    ep->pending_urb.ep_id   = ep_id;
+    ep->pending_urb.dir     = dir;
+    ep->pending_urb.len     = len;
+    ep->pending_urb.offset  = offset;
+    ep->pending_urb.dma_buf = dma_buf;
+    ep->pending_urb.client  = cc;
+
+    ret = xhci_arm_bulk_transfer(xhci_dev, slot_id, ep_id, dma_buf, len,
+                                  (dir == USB_DIR_IN));
+    if (ret < 0) {
+        dma_free(xhci_dev->xmem_pool, dma_buf);
+        ep->pending_urb.valid = 0;
+    }
+
+    ipc_setMR(0, ret);
+    ipc_reply(msginfo_word_new(0, 1, 0, 0));
 }
 
 void handle_config_ep(uint64_t sender, uint64_t info)

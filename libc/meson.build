@@ -56,6 +56,7 @@ libc_mosstd = [
     'mosstd/block_dev.c',
     'mosstd/ext4.c',
     'mosstd/wm_server.c',
+    'usb-urb.c',
 ]
 
 libc_malloc = [

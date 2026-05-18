@@ -133,7 +133,7 @@ int sys_ipc_send(task_t *t, int cap_id, bool is_blocking, bool is_call)
     if (!ce)  return -ERR_CAP_INVAL;
 
     if (ce->type != CAP_ENDPOINT || !(ce->rights & CRIGHT_SND))
-        return -ENOPERM;
+        return -EPERM;
 
     endpoint_t *ep = (endpoint_t *)ce->obj;
 

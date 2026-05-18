@@ -911,6 +911,19 @@ typedef struct xhci_ring
 //    volatile xhci_intr_reg_t     *interrupter;
 } xhci_ring_t;
 
+struct class_client;
+
+typedef struct pending_urb {
+    uint8_t              valid;
+    uint8_t              slot_id;
+    uint8_t              ep_id;
+    uint8_t              dir;
+    uint32_t             len;
+    uint32_t             offset;
+    void                *dma_buf;
+    struct class_client *client;
+} pending_urb_t;
+
 typedef struct xhci_virt_ep
 {
     xhci_ring_t *tr_ring;
@@ -922,6 +935,8 @@ typedef struct xhci_virt_ep
     /* deferred IPC reply (Stage 3 — cross-process bulk/int completion) */
     uint64_t    deferred_sender;
     pid_t       waiter_pid;
+    /* Stage 6: direct async URB from class driver */
+    pending_urb_t       pending_urb;
 } xhci_virt_ep_t;
 
 #define EP_CTX_PER_DEV		31
@@ -945,6 +960,17 @@ typedef struct xhci_port {
 	uint8_t		maj_rev;
 	uint8_t		min_rev;
 } xhci_port_t;
+
+#define MAX_CLASS_CLIENTS 8
+
+typedef struct class_client {
+    uint8_t       slot_id;       // device slot owned by this client (0 = free)
+    cap_id_t      notif_cap;
+    cap_id_t      data_shm_cap;
+    void         *data_shm;
+    cap_id_t      result_shm_cap;
+    urb_result_t *result_table;
+} class_client_t;
 
 typedef struct xhci
 {
@@ -993,6 +1019,8 @@ typedef struct xhci
     uint8_t     active_port;
 
     xhci_port_t *hw_ports;
+
+    class_client_t class_clients[MAX_CLASS_CLIENTS];
 
 } xhci_t;
 
@@ -1085,4 +1113,6 @@ void xhci_free_virt_device(xhci_t *xhci, uint8_t slot_id);
 int xhci_submit_bulk_transfer(xhci_t *xhci, uint8_t slot_id, uint8_t ep_id,
                                void *buf, uint32_t len, bool data_in,
                                uint32_t *out_residual);
+int xhci_arm_bulk_transfer(xhci_t *xhci, uint8_t slot_id, uint8_t ep_id,
+                            void *buf, uint32_t len, bool data_in);
 #endif /* __XHCI_H__ */

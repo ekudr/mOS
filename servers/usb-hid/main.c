@@ -7,9 +7,9 @@
 #include <sched.h>
 #include <libsys/usb/usb.h>
 #include <libsys/usb/usb-ipc.h>
+#include <libsys/usb/usb-urb.h>
 
 #define HID_MAX_DEVICES     8
-#define HID_INT_FAIL_MAX    8
 
 // HID Boot Keyboard report: modifier, reserved, keycodes[6]
 #define HID_KBD_REPORT_LEN  8
@@ -28,16 +28,25 @@ typedef struct hid_device {
     uint8_t  speed;
     uint32_t route_string;
     int      initialized;
-    uint16_t int_fail_count;
-    uint8_t  int_disabled;
+    int      disabled;
 } hid_device_t;
 
 static hid_device_t devs[HID_MAX_DEVICES];
 static int          ndevs;
 static int          hid_cap;
 static int          usb_core_cap;
+
+// ctrl xfer shared buf (host->buf, provided by usb-core in bind reply)
 static cap_id_t     shm_cap;
 static void        *shm_buf;
+
+// direct xfer path: class driver-owned shm, passed to xHCI
+static cap_id_t     notif_cap;
+static cap_id_t     data_shm_cap;
+static void        *data_shm;
+static cap_id_t     result_shm_cap;
+static urb_result_t *result_table;
+static cap_id_t     xhci_xfer_cap;
 
 static int hid_ctrl_xfer(hid_device_t *d, usb_control_request_t *req,
                          void *data, uint16_t data_len)
@@ -63,30 +72,24 @@ static int hid_ctrl_xfer(hid_device_t *d, usb_control_request_t *req,
     return ret;
 }
 
+// Submit interrupt-IN URB directly to xHCI and wait for completion.
 static int hid_poll_interrupt(hid_device_t *d, void *buf, uint8_t len)
 {
-    usb_class_cmd_t *cmd = (usb_class_cmd_t *)get_ipc_buffer()->msg;
-    memset(cmd, 0, sizeof(*cmd));
-    cmd->src          = IPC_SRC_CLASS;
-    cmd->cmd_type     = IPC_CLASS_DEV_XFER_SUBMIT;
-    cmd->xfer.slot_id = d->slot_id;
-    cmd->xfer.host_id = d->host_id;
-    cmd->xfer.ep_id   = d->int_ep_id;
-    cmd->xfer.dir     = USB_DIR_IN;
-    cmd->xfer.len     = len;
-
-    msg_info_t info = msginfo_word_new(0, sizeof(*cmd) / 8, 0, 0);
-    info = ipc_call(usb_core_cap, info);
-
-    int ret = (int)ipc_getMR(0);
-    if (ret == 0 && buf)
-        memcpy(buf, shm_buf, len);
-    return ret < 0 ? ret : (int)ipc_getMR(1);
+    urb_t u;
+    u.slot_id = d->slot_id;
+    u.ep_id   = d->int_ep_id;
+    u.dir     = USB_DIR_IN;
+    u.len     = len;
+    u.offset  = 0;
+    int r = urb_submit(&u);
+    if (r < 0) return r;
+    r = urb_wait(&u);
+    if (r == 0 && buf) memcpy(buf, data_shm, u.actual);
+    return r == 0 ? (int)u.actual : r;
 }
 
 static void hid_init_device(hid_device_t *d)
 {
-    // Switch to Boot Protocol so we get fixed-format reports
     usb_control_request_t req = {
         .bmRequestType = USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
         .bRequest      = HID_REQ_SET_PROTOCOL,
@@ -98,7 +101,6 @@ static void hid_init_device(hid_device_t *d)
     if (ret < 0)
         debug("[HID] Slot %u SET_PROTOCOL(boot) failed %d\n", d->slot_id, ret);
 
-    // SET_IDLE(0, 0): only report on state change
     usb_control_request_t idle_req = {
         .bmRequestType = USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE,
         .bRequest      = HID_REQ_SET_IDLE,
@@ -112,10 +114,8 @@ static void hid_init_device(hid_device_t *d)
           d->slot_id, d->host_id, d->int_ep_id, d->route_string, ndevs);
 }
 
-// Decode a Boot Keyboard report (8 bytes)
 static void hid_decode_keyboard(const uint8_t *r)
 {
-    // Only log non-idle reports (at least one key or modifier pressed)
     if (r[0] == 0 && r[2] == 0 && r[3] == 0 && r[4] == 0 &&
         r[5] == 0 && r[6] == 0 && r[7] == 0)
         return;
@@ -123,7 +123,6 @@ static void hid_decode_keyboard(const uint8_t *r)
           r[0], r[2], r[3], r[4], r[5], r[6], r[7]);
 }
 
-// Decode a Boot Mouse report (3 bytes minimum)
 static void hid_decode_mouse(const uint8_t *r, int len)
 {
     if (len < 3) return;
@@ -144,7 +143,10 @@ static int hid_poll_bind(void)
     cmd->cmd_type           = IPC_CLASS_POLL_BIND;
     cmd->poll_bind.class_id = USB_CLASS_ID_HID;
 
-    msg_info_t info = msginfo_word_new(0, sizeof(*cmd) / 8, 0, 0);
+    ipc_set_cap(0, notif_cap);
+    ipc_set_cap(1, data_shm_cap);
+    ipc_set_cap(2, result_shm_cap);
+    msg_info_t info = msginfo_word_new(0, sizeof(*cmd) / 8, 3, 0);
     info = ipc_call(usb_core_cap, info);
 
     uint8_t slot_id = (uint8_t)ipc_getMR(0);
@@ -152,14 +154,18 @@ static int hid_poll_bind(void)
         return 0;
 
     hid_device_t *d = &devs[ndevs];
-    d->slot_id        = slot_id;
-    d->host_id        = (uint8_t)ipc_getMR(1);
-    d->int_ep_id      = (uint8_t)ipc_getMR(2);
-    d->route_string   = (uint32_t)ipc_getMR(3);
-    d->speed          = (uint8_t)ipc_getMR(4);
-    d->initialized    = 0;
-    d->int_fail_count = 0;
-    d->int_disabled   = 0;
+    d->slot_id      = slot_id;
+    d->host_id      = (uint8_t)ipc_getMR(1);
+    d->int_ep_id    = (uint8_t)ipc_getMR(2);
+    d->route_string = (uint32_t)ipc_getMR(3);
+    d->speed        = (uint8_t)ipc_getMR(4);
+    d->initialized  = 0;
+    d->disabled     = 0;
+
+    if (!xhci_xfer_cap) {
+        xhci_xfer_cap = (cap_id_t)ipc_getMR(5);
+        urb_subsystem_init(xhci_xfer_cap, notif_cap, data_shm, result_table);
+    }
 
     if (!shm_buf) {
         shm_cap = ipc_get_cap(0);
@@ -176,7 +182,7 @@ static int hid_poll_bind(void)
 
 int main(void)
 {
-    debug("USB HID class driver (boot protocol)\n");
+    debug("USB HID class driver (boot protocol, async URB)\n");
 
     hid_cap = create_capability(CAP_ENDPOINT, CRIGHT_RCV | CRIGHT_SND | CRIGHT_GRANT);
     if (hid_cap < 0) {
@@ -189,20 +195,52 @@ int main(void)
         return -1;
     }
 
+    notif_cap = notif_create(CRIGHT_RCV | CRIGHT_SND | CRIGHT_GRANT | CRIGHT_NOTIFY);
+    if (notif_cap < 0) {
+        debug("[HID] notif_create failed\n");
+        return -1;
+    }
+    if (notif_bind(notif_cap) < 0) {
+        debug("[HID] notif_bind failed\n");
+        return -1;
+    }
+
+    data_shm_cap = cap_shmem_create(PAGE_SIZE, CRIGHT_GRANT | CRIGHT_MAP);
+    if (data_shm_cap < 0) {
+        debug("[HID] cap_shmem_create data failed\n");
+        return -1;
+    }
+    data_shm = ipc_shm_attach(data_shm_cap, NULL, 0);
+    if (!data_shm) {
+        debug("[HID] data_shm attach failed\n");
+        return -1;
+    }
+    memset(data_shm, 0, PAGE_SIZE);
+
+    result_shm_cap = cap_shmem_create(URB_TABLE_SIZE, CRIGHT_GRANT | CRIGHT_MAP);
+    if (result_shm_cap < 0) {
+        debug("[HID] cap_shmem_create result failed\n");
+        return -1;
+    }
+    result_table = (urb_result_t *)ipc_shm_attach(result_shm_cap, NULL, 0);
+    if (!result_table) {
+        debug("[HID] result_table attach failed\n");
+        return -1;
+    }
+    memset(result_table, 0, URB_TABLE_SIZE);
+
     usb_core_cap = devman_lookup("usb-core");
     while (usb_core_cap <= 0) {
         sched_yield();
         usb_core_cap = devman_lookup("usb-core");
     }
-    debug("[HID] usb-core cap 0x%x\n", usb_core_cap);
+//    debug("[HID] usb-core cap 0x%x\n", usb_core_cap);
 
     uint8_t report[HID_KBD_REPORT_LEN];
 
     for (;;) {
-        // Pull one pending bind per iteration
         hid_poll_bind();
 
-        // Init newly bound devices
         for (int i = 0; i < ndevs; i++) {
             if (!devs[i].initialized) {
                 hid_init_device(&devs[i]);
@@ -210,35 +248,25 @@ int main(void)
             }
         }
 
-        // Round-robin interrupt-IN poll
         for (int i = 0; i < ndevs; i++) {
-            if (devs[i].int_disabled)
+            if (devs[i].disabled)
                 continue;
 
             int actual = hid_poll_interrupt(&devs[i], report, sizeof(report));
-            if (actual == -ETIMEOUT) {
-                // No data — mouse/kbd idle. Don't count as fail.
+            if (actual < 0) {
+                devs[i].disabled = 1;
+                debug("[HID] Slot %u int-IN error %d — disabled\n",
+                      devs[i].slot_id, actual);
                 continue;
             }
-            if (actual <= 0) {
-                devs[i].int_fail_count++;
-                if (devs[i].int_fail_count >= HID_INT_FAIL_MAX) {
-                    devs[i].int_disabled = 1;
-                    debug("[HID] Slot %u interrupt-IN disabled after %u failures\n",
-                          devs[i].slot_id, devs[i].int_fail_count);
-                }
+            if (actual == 0)
                 continue;
-            }
-            devs[i].int_fail_count = 0;
 
-            // Decode by report size heuristic: 8=keyboard, <=4=mouse
             if (actual >= HID_KBD_REPORT_LEN)
                 hid_decode_keyboard(report);
             else
                 hid_decode_mouse(report, actual);
         }
-
-//        sched_yield();
     }
 
     return 0;

@@ -44,10 +44,11 @@ typedef struct usb_port
 typedef struct usb_host {
     cap_id_t    host_cap;
     cap_id_t    buf_cap;
-    void *      buf;   
+    void *      buf;
     size_t      buf_size;
     uint32_t    max_ports;
     usb_port_t  *ports;
+    pid_t       pid;
 } usb_host_t;
 
 usb_host_t *hosts[USB_MAX_HOSTS];
@@ -195,6 +196,7 @@ void handle_host_register(uint64_t sender, uint64_t info)
         goto reply_error;
     }
 
+    host->pid = (pid_t)sender;
     debug("[USB_CORE] Registered host cap 0x%lX from sender 0x%lX\n", host->host_cap, sender);
     for (int i = 0; i < USB_MAX_HOSTS; i++) {
         if (!hosts[i]) {
@@ -1100,11 +1102,18 @@ static void handle_class_port_disconnect(uint64_t sender, uint64_t info)
 }
 
 // class→usb-core: pull next pending bind matching class_id. slot_id=0 = none.
+// Class driver passes 3 caps: notif_cap, data_shm_cap, result_shm_cap.
+// usb-core forwards them to xHCI via IPC_HOST_REGISTER_CLIENT and returns
+// xhci_xfer_cap so the class driver can talk to xHCI directly for transfers.
 static void handle_class_poll_bind(uint64_t sender, uint64_t info)
 {
-    (void)sender; (void)info;
     usb_class_cmd_t *cmd = (usb_class_cmd_t *)get_ipc_buffer()->msg;
     uint8_t want_class = cmd->poll_bind.class_id;
+
+    // Class driver passes its notif, data_shm, result_shm caps
+    cap_id_t notif_cap      = (cap_id_t)ipc_get_cap(0);
+    cap_id_t data_shm_cap   = (cap_id_t)ipc_get_cap(1);
+    cap_id_t result_shm_cap = (cap_id_t)ipc_get_cap(2);
 
     // Find first matching entry
     int found = -1;
@@ -1115,19 +1124,45 @@ static void handle_class_poll_bind(uint64_t sender, uint64_t info)
         }
     }
     if (found < 0) {
+        if (notif_cap > 0)      cap_free(notif_cap);
+        if (data_shm_cap > 0)   cap_free(data_shm_cap);
+        if (result_shm_cap > 0) cap_free(result_shm_cap);
         ipc_setMR(0, 0);
         ipc_reply(msginfo_word_new(0, 1, 0, 0));
         return;
     }
 
     pending_class_bind_t *p = &pending_binds[found];
+    usb_host_t *host = hosts[p->host_id - 1];
+
+    // Grant notif_cap to xHCI with badge=1 (IPC cap transfer always uses badge=0,
+    // which would cause notification_signal to OR 0 into word -> no wake-up).
+    cap_id_t notif_in_xhci = cap_grant(notif_cap, host->pid, -1, CRIGHT_SND, 1);
+
+    // Register class client with xHCI: forward data/result shm caps via IPC,
+    // pass notif_cap as an MR-encoded cap_id (already in xHCI's table from cap_grant).
+    usb_host_cmd_t *hcmd = (usb_host_cmd_t *)get_ipc_buffer()->msg;
+    memset(hcmd, 0, sizeof(*hcmd));
+    hcmd->cmd_type                  = IPC_HOST_REGISTER_CLIENT;
+    hcmd->register_client.slot_id   = p->slot_id;
+    hcmd->register_client.notif_cap = (uint64_t)notif_in_xhci;
+    ipc_set_cap(0, data_shm_cap);
+    ipc_set_cap(1, result_shm_cap);
+    msg_info_t reg_info = msginfo_word_new(0, sizeof(*hcmd) / 8, 2, 0);
+    ipc_call(host->host_cap, reg_info);
+    // ignore xHCI register result — proceed either way
+
+    // Grant host_cap (xHCI endpoint) to class driver as xhci_xfer_cap
+    cap_id_t xhci_xfer_cap = cap_grant(host->host_cap, sender, -1, CRIGHT_SND, 0);
+
     ipc_setMR(0, p->slot_id);
     ipc_setMR(1, p->host_id);
     ipc_setMR(2, p->primary_ep_id);
     ipc_setMR(3, p->route_string);
     ipc_setMR(4, p->speed);
+    ipc_setMR(5, (uint64_t)xhci_xfer_cap);
     ipc_set_cap(0, p->buf_cap);
-    msg_info_t reply = msginfo_word_new(0, 5, 1, 0);
+    msg_info_t reply = msginfo_word_new(0, 6, 1, 0);
 
     // Remove found entry
     for (int i = found; i < n_pending_binds - 1; i++)

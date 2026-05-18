@@ -151,6 +151,15 @@ int main()
         case IPC_HOST_XFER_SUBMIT:
             handle_xfer_submit(sender, info);
             break;
+        case IPC_HOST_REGISTER_CLIENT:
+            handle_register_client(sender, info);
+            break;
+        case IPC_HOST_UNREGISTER_CLIENT:
+            handle_unregister_client(sender, info);
+            break;
+        case IPC_XFER_DIRECT_SUBMIT:
+            handle_direct_xfer_submit(sender, info);
+            break;
 
         default:
             break;

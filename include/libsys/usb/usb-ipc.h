@@ -31,6 +31,9 @@ enum {
     IPC_HOST_UPDATE_EP0_MPS,
     IPC_HOST_STOP_EP,
     IPC_HOST_XFER_SUBMIT,
+    IPC_HOST_REGISTER_CLIENT   = 10,
+    IPC_HOST_UNREGISTER_CLIENT = 11,
+    IPC_XFER_DIRECT_SUBMIT     = 20,
 };
 
 // Class driver ↔ usb-core IPC commands (cmd_type field).
@@ -43,6 +46,18 @@ enum {
     IPC_CLASS_DEV_XFER_SUBMIT = 5,  // class→usb-core: proxy bulk/int xfer
     IPC_CLASS_POLL_BIND       = 6,  // class→usb-core: pull next pending bind
 };
+
+typedef struct urb_result {
+    volatile uint8_t  valid;
+    int8_t            status;
+    uint16_t          _pad;
+    uint32_t          actual;
+} urb_result_t;
+
+#define URB_TABLE_MAX_SLOTS  64
+#define URB_TABLE_MAX_EPS    32
+#define URB_TABLE_SIZE       (URB_TABLE_MAX_SLOTS * URB_TABLE_MAX_EPS * sizeof(urb_result_t))
+#define URB_RES_IDX(slot, ep) ((slot) * URB_TABLE_MAX_EPS + (ep))
 
 typedef struct usb_ep_desc {
     uint8_t  ep_num;
@@ -95,6 +110,19 @@ typedef struct usb_host_cmd {
             uint8_t  dir;     /* USB_DIR_IN or USB_DIR_OUT */
             uint32_t len;
         } xfer;
+        struct {
+            uint8_t  slot_id;
+            uint8_t  _pad[7];
+            uint64_t notif_cap;
+        } register_client;
+        struct {
+            uint8_t  slot_id;
+            uint8_t  ep_id;
+            uint8_t  dir;
+            uint8_t  _pad;
+            uint32_t len;
+            uint32_t offset;
+        } direct_xfer;
     };
 
 } usb_host_cmd_t;
