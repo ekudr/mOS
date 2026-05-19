@@ -39,20 +39,20 @@ cap_node_t *cap_create_node(task_t *t)
 static cap_entry_t *__cap_lookup(task_t *t, int cap_id)
 {
     int root = get_cap_root(cap_id);
-    if (root > MAX_CAPS) return NULL;
+    if (root >= MAX_ROOT_CAPS) return NULL;
 
     cap_entry_t *ce = &t->caps[root];
     if (unlikely(ce->type != CAP_CNODE)) return NULL;
 
     int idx = (cap_id >> 8) & 0xFF;
-    if (idx > MAX_CAPS) return NULL;
+    if (idx >= MAX_CAPS) return NULL;
 
     cap_node_t *cnode = (cap_node_t *)ce->obj;
     ce = &cnode->caps[idx];
 
     if (ce->type == CAP_CNODE) {
         idx = cap_id & 0xFF;
-        if (idx > MAX_CAPS) return NULL;
+        if (idx >= MAX_CAPS) return NULL;
 
         cap_node_t *cnode = (cap_node_t *)ce->obj;
         ce = &cnode->caps[idx];
@@ -233,7 +233,7 @@ int sys_cap_shmem_create(task_t *t)
 
     ret = cap_install(t, shm, CAP_SHMEMORY, rights);
     if (ret < 0) {
-        // free_shmem()
+        shmem_free_memory(shm);
         mfree(shm);
     }
         

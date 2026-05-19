@@ -104,7 +104,7 @@ void dump_usb_device_config(usb_device_t *dev)
         } else if (desc_type == USB_DT_ENDPOINT) {
             usb_endpoint_descriptor_t *ep_desc = (usb_endpoint_descriptor_t *)ptr;
             uint8_t ep_addr = ep_desc->bEndpointAddress;
-            uint8_t ep_num = ep_addr & 0x0F;
+//            uint8_t ep_num = ep_addr & 0x0F;
 
             uint8_t ep_type = ep_desc->bmAttributes & 0x03;
             

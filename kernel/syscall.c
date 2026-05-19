@@ -137,7 +137,6 @@ static uint64_t (*syscalls[])(void) = {
     [SYS_mmap]      =  sys_mmap,
     [SYS_cache_flush] = __sys_cache_flush,
     [SYS_cache_inval] = __sys_cache_inval,
-//    [SYS_sbrk]      =  sys_sbrk,
     [SYS_recv]      =  __sys_recv,
     [SYS_nb_recv]   =  __sys_nb_recv,
     [SYS_send]      =  __sys_send,

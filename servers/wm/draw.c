@@ -76,23 +76,23 @@ void fb_draw_rect(wm_server_t *wm, unsigned short x, unsigned short y,
 }
 
 
-static void fb_draw_line(wm_server_t *wm, int x0, int y0, int x1, int y1, uint32_t c) 
-{
-    int dx, dy, p, x, y;
-	dx=x1-x0;
-	dy=y1-y0;
-	x=x0;
-	y=y0;
-	p=2*dy-dx;
-	while(x<x1) {
-		if(p>=0){ 
-			fb_put_pixel(wm, x,y,c);
-			y=y+1;
-			p=p+2*dy-2*dx;
-		} else {
-			fb_put_pixel(wm, x,y,c);
-			p=p+2*dy;
-		} // if
-		x=x+1;
-	}
-}
+// static void fb_draw_line(wm_server_t *wm, int x0, int y0, int x1, int y1, uint32_t c) 
+// {
+//     int dx, dy, p, x, y;
+// 	dx=x1-x0;
+// 	dy=y1-y0;
+// 	x=x0;
+// 	y=y0;
+// 	p=2*dy-dx;
+// 	while(x<x1) {
+// 		if(p>=0){ 
+// 			fb_put_pixel(wm, x,y,c);
+// 			y=y+1;
+// 			p=p+2*dy-2*dx;
+// 		} else {
+// 			fb_put_pixel(wm, x,y,c);
+// 			p=p+2*dy;
+// 		} // if
+// 		x=x+1;
+// 	}
+// }

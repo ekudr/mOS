@@ -115,7 +115,7 @@ int xhci_control_transfer(xhci_t *xhci, uint8_t slot_id, usb_control_request_t *
     size_t buffer_size = data_len > 0 ? data_len : 0;
     bool data_in = (req->bmRequestType & USB_DIR_IN) != 0;
 
-    void *dma_buffer;
+    void *dma_buffer = NULL;
     if (buffer_size > 0) {
         // Allocate DMA buffer for the descriptor
         dma_buffer = dma_alloc(xhci->xmem_pool, buffer_size, 64);

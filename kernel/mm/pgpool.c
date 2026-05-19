@@ -14,7 +14,8 @@ struct {
     uint64_t nfree;
 } pg_pool;
 
-/* Free the page of physical memory pointed at by direct map va.
+/* 
+ * Free the page of physical memory pointed at by direct map va.
  */
 void pgfree(uint64_t ppn)
  {
@@ -28,7 +29,7 @@ void pgfree(uint64_t ppn)
 */
     f = ppn_to_page(ppn)->flags;
     f &= ~PG_active;
-    f |= PG_buddy; 
+//    f |= PG_buddy; 
     ppn_to_page(ppn)->flags = f;
 //    p = (struct page_item *)va;
     p = &ppn_to_page(ppn)->buddy_page;

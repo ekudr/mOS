@@ -22,6 +22,7 @@ inline void __sys_error_return(task_t *t, int err)
 uint64_t __sys_yield(void)
 {
     sched_task_yield();
+    return 0;
 }
 
 uint64_t sys_fork(void)
@@ -55,12 +56,12 @@ uint64_t sys_debug(void)
 {
     char *str;
     str = (char *)PPN2DA(pgalloc());
-//    memset(str, 0, PAGE_SIZE);
+
     int c = syscall_argstr(0, str, 4096);
     if (c < 0){
         return -1;
     }
-//    debug("%s", str);
+
     uint64_t ret = sbi_debug_console_write(str, c);
     pgfree(DA2PPN(str));
     return ret;
@@ -81,34 +82,6 @@ uint64_t sys_mmap(void)
     return mreg->addr;
 }
 
-// uint64_t sys_sbrk(void)
-// {
-//     uint64_t    addr;
-//     task_t      *t;
-//     int         size;
-
-//     syscall_argint(0, &size);
-//     t = mytask();
-//     if (size == 0)
-//         return t->mm->brk;
-
-//     addr = t->mm->brk;
-//     if (size > 0)
-//     {        
-//         size = PGROUNDUP(size);
-//         if (uvm_alloc_mmreg(t, addr, size, MM_REG_MEM, PTE_U | PTE_R | PTE_W) != SUCCESS)        
-//             return -ENOMEM;
-        
-//         t->mm->brk += size;
-//     }
-//     else if (size < 0)
-//     {
-//         panic("[SYSCALL] SBRK redues memory is not implemented yet");
-//     }
-
-    
-//     return addr;
-// }
 
 void flush_dcache_range(unsigned long start, unsigned long end);
 

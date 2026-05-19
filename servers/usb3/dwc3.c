@@ -46,7 +46,7 @@ static int dwc3_get_dr_mode(dwc3_dev_t *dwc)
 
 	// mode = dwc->dr_mode;
 	hw_mode = DWC3_GHWPARAMS0_MODE(dwc->hwparams.hwparams0);
-debug("[USB3] HW MODE 0x%X\n", hw_mode);
+//    debug("[USB3] HW MODE 0x%X\n", hw_mode);
 	switch (hw_mode) {
 	case DWC3_GHWPARAMS0_MODE_GADGET:
 		// if (IS_ENABLED(CONFIG_USB_DWC3_HOST)) {
@@ -84,7 +84,7 @@ debug("[USB3] HW MODE 0x%X\n", hw_mode);
 	}
 
 	if (mode != dwc->dr_mode) {
-		debug("[USB2] Configuration mismatch. dr_mode forced to %s\n",
+		debug("[USB3] Configuration mismatch. dr_mode forced to %s\n",
 			 mode == USB_DR_MODE_HOST ? "host" : "gadget");
 
 		dwc->dr_mode = mode;
@@ -237,7 +237,7 @@ static bool dwc3_core_is_valid(dwc3_dev_t *dwc)
 	reg = dwc3_readl(dwc->base, DWC3_GSNPSID);
 
 	dwc->ip = DWC3_GSNPS_ID(reg);
-    debug("[USB2] ip revision 0x%X\n", reg);
+//    debug("[USB3] ip revision 0x%X\n", reg);
 
 	/* This should read as U3 followed by revision number */
 	if (DWC3_IP_IS(DWC3)) {
@@ -316,15 +316,15 @@ done:
 
 static void dwc3_core_setup_global_control(dwc3_dev_t *dwc)
 {
-	uint32_t hwparams4 = dwc->hwparams.hwparams4;
+//	uint32_t hwparams4 = dwc->hwparams.hwparams4;
 	unsigned int power_opt;
-	unsigned int hw_mode;
+//	unsigned int hw_mode;
 	uint32_t reg;
 
 	reg = dwc3_readl(dwc->base, DWC3_GCTL);
 	reg &= ~DWC3_GCTL_SCALEDOWN_MASK;
 
-	hw_mode = DWC3_GHWPARAMS0_MODE(dwc->hwparams.hwparams0);
+//	hw_mode = DWC3_GHWPARAMS0_MODE(dwc->hwparams.hwparams0);
 	power_opt = DWC3_GHWPARAMS1_EN_PWROPT(dwc->hwparams.hwparams1);
 
 	switch (power_opt) {
@@ -926,7 +926,7 @@ static int dwc3_core_init_mode(dwc3_dev_t *dwc)
 
 	return 0;
 }
-
+/*
 static void dwc3_regs_dump(dwc3_dev_t *dwc)
 {
 	debug("[XHCI] DWC3_GSBUSCFG0 = 0x%X\n", dwc3_readl(dwc->base, DWC3_GSBUSCFG0));
@@ -986,7 +986,7 @@ static void dwc3_regs_dump(dwc3_dev_t *dwc)
 	if (DWC3_IP_IS(DWC32))
 		debug("[XHCI] DWC3_DCFG1 = 0x%X\n", dwc3_readl(dwc->base, DWC3_DCFG1));
 }
-
+*/
 
 
 int usb3_init()

@@ -570,7 +570,7 @@ sched_taskalloc(void)
           // Add name server endpoint as cap 0x100
         ns_cap = cap_install(t, ns_ep, CAP_ENDPOINT, CRIGHT_SND);  
     }
-
+    (void)ns_cap;
 //    debug("[SCHED] NS cap id 0x%lX\n", ns_cap);
     // Set up new context to start executing at forkret,
     // which returns to user space.
@@ -660,28 +660,28 @@ sched_alloc_asid(uint64_t id)
 
 // Grow or shrink user memory by n bytes.
 // Return 0 on success, -1 on failure.
-int
-sched_growtask(int n)
-{
-    uint64_t    sz;
-    task_t *t = mytask();
+// int
+// sched_growtask(int n)
+// {
+//     uint64_t    sz;
+//     task_t *t = mytask();
 
- //   sz = t->sz;
-    if (n > 0)
-    {
-        if ((sz = mmu_user_vmalloc(t->pagetable, sz, sz + n, PTE_W)) == 0)
-        {
-            return -1;
-        }
-    }
-    else if (n < 0)
-    {
-        sz = mmu_user_vmdealloc(t->pagetable, sz, sz + n);
-    }
- //   t->sz = sz;
-
-    return 0;
-}
+//  //   sz = t->sz;
+//     if (n > 0)
+//     {
+//         if ((sz = mmu_user_vmalloc(t->pagetable, sz, sz + n, PTE_W)) == 0)
+//         {
+//             return -1;
+//         }
+//     }
+//     else if (n < 0)
+//     {
+//         sz = mmu_user_vmdealloc(t->pagetable, sz, sz + n);
+//     }
+//  //   t->sz = sz;
+    
+//     return 0;
+// }
 
 int fl2perm(int flags)
 {
@@ -703,7 +703,7 @@ int sched_task_control(task_t *t)
         int cap_id     = syscall_get_MR(t, 0);    
         uint64_t vaddr = syscall_get_MR(t, msgRegisters[1]);
         uint64_t size  = syscall_get_MR(t, msgRegisters[2]);
-        uint64_t flags = syscall_get_MR(t, msgRegisters[3]);
+//        uint64_t flags = syscall_get_MR(t, msgRegisters[3]);
 
         cap_entry_t *ce = cap_lookup(t, cap_id);
         if (!ce)  return -ERR_CAP_INVAL;

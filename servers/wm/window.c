@@ -82,7 +82,7 @@ void wm_composite(void)
         WM.buf_size = size;
     }
 
-    int any_redraw = 0;
+//    int any_redraw = 0;
     // for (int i = 0; i < WM.wcount; i++) {
     //     if ()
     // }
@@ -109,7 +109,7 @@ void wm_composite(void)
 
         blit_window_to_fb(w, (uint32_t)sx, (uint32_t)sy, (uint32_t)dx, (uint32_t)dy,
                          (uint32_t)wdt, (uint32_t)hgt, WM.backbuffer, WM.fb_pitch);
-        fb_draw_rect(&WM, dx-3, dy-3, wdt+6, hgt+6, 0xffffffff, 2);                         
+        fb_draw_rect(&WM, dx-3, dy-3, wdt+6, hgt+6, 0xffff, 2);                         
       //  w->needs_redraw = 0;
  //      }
 

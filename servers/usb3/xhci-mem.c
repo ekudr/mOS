@@ -285,7 +285,7 @@ void xhci_free_virt_device(xhci_t *xhci, uint8_t slot_id)
 
 int xhci_mem_init(xhci_t *xhci)
 {
-    uint64_t pa;
+//    uint64_t pa;
     // max scratchpads+1 + DCBAAP + 2 Command ring + 2 event ring + 2 device context
     size_t size = 0x400000; // 4MB should be enough for initial allocations
 
@@ -362,7 +362,7 @@ int xhci_mem_init(xhci_t *xhci)
 }
 
 /* _inc_enqueue_ptr defined as static inline in xhci.h */
-
+/*
 // Dump dma buffer content for debugging
 static void dump_dma_buffer(xhci_t *xhci, void *dma_buffer, size_t length)
 {
@@ -378,7 +378,7 @@ static void dump_dma_buffer(xhci_t *xhci, void *dma_buffer, size_t length)
         debug("\n");
     }
 }
-
+*/
 // EP0 Control Transfer function
 int xhci_ep0_control_transfer(xhci_t *xhci, uint8_t slot_id, usb_control_request_t *req, 
                              void *data, size_t data_len, bool data_in)

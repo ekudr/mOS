@@ -39,11 +39,6 @@ int sys_debug(char *msg)
     return __syscall(SYS_debug, (uint64_t)msg);
 }
 
-char* sbrk(int size)
-{
-    return (char *) __syscall(SYS_sbrk, (uint64_t)size);
-}
-
 void *mmap(void *addr, uint64_t len, uint64_t flags, void *paddr)
 {
     return (void *)__syscall(SYS_mmap,  (uint64_t)addr,(uint64_t)len, (uint64_t)flags, (uint64_t)paddr);

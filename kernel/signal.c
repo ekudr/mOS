@@ -87,7 +87,7 @@ kerrno_t signal_action(signal_t sig, uintptr_t user_sa)
     }
     
     acquire(&t->sighand->lock);
-    debug("[SIGACT] set sig %d sa handler 0x%lX restorer 0x%lX\n", sig, sa->handler, sa->restorer);
+//    debug("[SIGACT] set sig %d sa handler 0x%lX restorer 0x%lX\n", sig, sa->handler, sa->restorer);
     
     t->sighand->sa[sig].handler = sa->handler;
     t->sighand->sa[sig].restorer = sa->restorer;

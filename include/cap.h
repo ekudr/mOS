@@ -5,7 +5,8 @@ struct kobject;
 
 struct task;
 
-#define MAX_CAPS 64
+#define MAX_ROOT_CAPS 64
+#define MAX_CAPS 170
 
 #define MAX_MEM_SLOTS 170
 
@@ -23,7 +24,7 @@ typedef struct cap_entry
 typedef struct cap_node
 {
     struct kobject  hdr;
-    cap_entry_t     caps[MAX_CAPS];
+    cap_entry_t     caps[MAX_CAPS]; // 170 caps can fit 
 } cap_node_t;
 
 _Static_assert((sizeof(cap_node_t) < 0x1000), "cap_node_t structure size");
@@ -35,7 +36,7 @@ enum cap_root{
     ROOT_NUMS,
 };
 
-_Static_assert((ROOT_NUMS <= MAX_CAPS), "task caps number");
+_Static_assert((ROOT_NUMS < MAX_ROOT_CAPS), "task caps number");
 
 // cap id format 
 //    +--------+--------+--------+--------+
@@ -52,6 +53,7 @@ static inline void cap_insert(cap_entry_t *ce, void *obj, cap_type_t type, uint3
     ce->type   = type;
     ce->rights = rights;    
     ce->obj    = ko_get((kobject_t *)obj);
+//    ce->badge  = 0;
 }
 
 void *create_cnode(void);

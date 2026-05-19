@@ -67,7 +67,7 @@ int urb_wait(urb_t *u)
 {
     urb_scan_results();
     while (!__atomic_load_n(&u->done, __ATOMIC_ACQUIRE)) {
-        int ret = notif_wait(_notif_cap);
+        notif_wait(_notif_cap);
         urb_scan_results();
     }
     return u->status;

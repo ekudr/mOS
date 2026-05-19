@@ -41,7 +41,7 @@ static int combphy_wait_ready(usb_phy_t *phy, uint32_t offset, uint32_t mask, ui
 	if (!timeout) {
 		return -ETIMEOUT;
 	}
-	debug("phy init timeout remain: %d\n", timeout);
+//	debug("phy init timeout remain: %d\n", timeout);
 	return 0;
 }
 

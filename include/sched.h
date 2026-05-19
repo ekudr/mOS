@@ -183,7 +183,7 @@ typedef struct task
     struct notification *bound_notif;       // bound notification (strong ref via ko_get)
     uint64_t             notif_word;        // notification word staged by notification_signal
     struct spinlock     cap_lock;
-    cap_entry_t         caps[MAX_CAPS];
+    cap_entry_t         caps[MAX_ROOT_CAPS];
 
 //    struct spinlock     rep_lock;
     int                 reply_cap;
@@ -266,7 +266,7 @@ task_t *sched_taskalloc(void);
 pagetable_t sched_task_pagetable(task_t *t);
 void sched_task_freepagetable(pagetable_t pagetable, uint64_t sz);
 uint16_t sched_alloc_asid(uint64_t id);
-int sched_growtask(int n);
+//int sched_growtask(int n);
 kerrno_t uvm_alloc_mmreg(task_t *task, uint64_t vaddr, uint64_t size, uint64_t type, int xperm);
 struct mem_region *uvm_alloc_vmem(task_t *task, uint64_t vaddr, size_t size);
 struct mem_region *uvm_user_memmap(task_t *task, uint64_t addr, uint64_t size, uint64_t flags, uint64_t paddr);

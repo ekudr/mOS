@@ -29,14 +29,14 @@ int main()
 //    debug("Capabbility is created %d\n", ns_cap);
     for (;;) {
         ns_msg_t *msg = (ns_msg_t *)get_ipc_buffer()->msg;
-        int sender;
+//        int sender;
 //        debug("NS srvr resv msg 0x%lX size %d\n", msg, sizeof(msg));
         uint64_t info = ipc_recv(0x100, NULL);
         int ret = (int)label_from_msginfo_word(info);
         if (ret < 0 || !length_from_msginfo_word(info)) {
             debug("[NS] Error receiving message %d info 0x%lX\n", ret, info);
         }
-        sender = msg->pid;
+//        sender = msg->pid;
 //        debug("[NAMESERVER] resved msg type %d cap id %d from task %d\n", msg->type, msg->cap_id, sender);
         if (msg->type == NS_REGISTER) {
             if (count < MAX_NAMES) {

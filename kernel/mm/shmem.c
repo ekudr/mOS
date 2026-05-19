@@ -63,6 +63,9 @@ int shmem_free_memory(shmem_block_t * shmb)
     if (pg != cnt)
         panic("[SHMEM] wrong pages count");
 
+    shmb->npages = 0;
+    shmb->head = NULL;
+
     return SUCCESS;
 }
 

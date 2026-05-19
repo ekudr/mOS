@@ -25,7 +25,7 @@ void init_server(void)
     }   
 }
 
-int handle_client_msg(uint64_t sender)
+void handle_client_msg(uint64_t sender)
 {
     wm_msg_hdr_t *hdr = (wm_msg_hdr_t *)&get_ipc_buffer()->msg[0];
     switch (hdr->type)

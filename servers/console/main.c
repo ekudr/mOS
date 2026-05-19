@@ -32,17 +32,17 @@ void init_server(void)
 
  
     int ret = devman_register("con0", cap);    
-//    debug("[TTY] Register status %d\n", ret);
-    if (ret < 0) {
-        debug("PANIC CONSOLE");
-        for (;;);
-    }
+    if (ret < 0)
+        panic("PANIC CONSOLE");
+
 
     // int vfs = vfs_open("/dev/con0");
     // debug("[CONSOLE] open vfs returned %d\n", vfs);
     // if (vfs < 0) {
         
-      int  vfs = vfs_create("/dev/con0", VFS_DEVICE, cap);
+    int  vfs = vfs_create("/dev/con0", VFS_DEVICE, cap);
+    if (vfs < 0)
+        panic("CONSOLE VFS REGISTER");
     // }
     // debug("[CONSOLE] create vfs returned %d\n", vfs);
 }
@@ -55,7 +55,9 @@ int console_init()
     uint32_t wid;
 
     int st = wm_create_window(640, 480, 0, &wid, &shm);
-
+    if (st < 0)
+        panic("PANIC CONSOLE");
+        
     void *addr = ipc_shm_attach(shm, NULL, 0);
     if (!addr) panic("shm attach");
 

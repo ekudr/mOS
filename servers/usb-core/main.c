@@ -36,7 +36,7 @@ static int init_server(void)
 
 int main()
 {
-    debug("USB Core driver ver 0.0.0\n");
+    debug("USB Core driver ver 0.0.3\n");
 
     int ret;
 

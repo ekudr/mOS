@@ -22,7 +22,6 @@ uint64_t sys_exec(void);
 uint64_t sys_getpid(void);
 uint64_t sys_debug(void);
 uint64_t sys_mmap(void);
-uint64_t sys_sbrk(void);
 uint64_t __sys_recv(void);
 uint64_t __sys_nb_recv(void);
 uint64_t __sys_send(void);

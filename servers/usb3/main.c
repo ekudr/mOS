@@ -96,7 +96,7 @@ int main()
         sched_yield();
     }
     
-    debug("USB3 SPACEMIT K1 driver ver 0.0.0\n");
+    debug("USB3 SPACEMIT K1 driver ver 0.0.3\n");
 
     int ret = usb3_init();
     if (ret < 0) panic("xHCI init");
@@ -106,7 +106,7 @@ int main()
 
     usb_host_id = host_register();
     if (usb_host_id < 0) panic("xHCI host register");
-    debug("[XHCI] registered with usb-core, id 0x%lX\n", usb_host_id);
+//    debug("[XHCI] registered with usb-core, id 0x%lX\n", usb_host_id);
 
     hub_enable();
 

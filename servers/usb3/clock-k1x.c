@@ -55,6 +55,7 @@ int ccu_init()
     apmu_base = mmap(NULL, 0x1000, MAP_MEMIO | MAP_READ | MAP_WRITE, (void *)pa);
     if (!apmu_base) return -ENOMEM;
     apmu_base += off;
+    return SUCCESS;
 }
 
 clk_t *get_clk_by_id(int id)

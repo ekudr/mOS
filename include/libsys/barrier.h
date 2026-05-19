@@ -23,6 +23,7 @@
 #define smp_rmb()	RISCV_FENCE(r, r)
 #define smp_wmb()	RISCV_FENCE(w, w)
 
+/*
 // #define smp_store_release(p, v)						\
 // do {									\
 // 	RISCV_FENCE(rw, w);						\
@@ -35,5 +36,5 @@
 // 	RISCV_FENCE(r, rw);						\
 // 	___p1;								\
 // })
-
+*/
 #endif /* _TOOLS_LINUX_ASM_RISCV_BARRIER_H */

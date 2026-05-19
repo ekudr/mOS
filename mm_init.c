@@ -49,7 +49,11 @@ get_page(void)
     return pg;
 }
 
-
+// uint64_t
+// get_next(void)
+// {
+//     return next_page;
+// }
 
 pte_t *
 early_mmu_walk(pagetable_t pagetable, uint64_t va, int alloc)
@@ -314,8 +318,3 @@ vm_init(void)
 }
 
 
-uint64_t
-get_next(void)
-{
-    return next_page;
-}

@@ -104,11 +104,11 @@ int xhci_reset(xhci_t *xhci, uint64_t timeout_us)
 
     udelay(1000);
 
-	ret = xhci_handshake(&xhci->op_regs->usbcmd, CMD_RESET, 0, timeout_us);
+	ret = xhci_handshake((void *)&xhci->op_regs->usbcmd, CMD_RESET, 0, timeout_us);
 	if (ret < 0)
 		return ret;
 
-    ret = xhci_handshake(&xhci->op_regs->usbsts, STS_CNR, 0, timeout_us);
+    ret = xhci_handshake((void *)&xhci->op_regs->usbsts, STS_CNR, 0, timeout_us);
 
 //    debug("[XHCI] Reset done\n");
 
@@ -208,34 +208,34 @@ int xhci_reset_port(uint8_t port_num, bool is_usb3)
     return SUCCESS;
 }
 
-static void _log_op_regs(xhci_t *xhci)
-{
-    debug("===== xHCI Operational Registers (0x%llx) =====\n", (uint64_t)xhci->op_regs);
-    debug("    usbcmd     : 0x%x\n", xhci->op_regs->usbcmd);
-    debug("    usbsts     : 0x%x\n", xhci->op_regs->usbsts);
-    debug("    pagesize   : 0x%x\n", xhci->op_regs->pagesize);
-    debug("    dnctrl     : 0x%x\n", xhci->op_regs->dnctrl);
-    debug("    crcr       : 0x%lx\n", xhci->op_regs->crcr);
-    debug("    dcbaap     : 0x%lx\n", xhci->op_regs->dcbaap);
-    debug("    config     : 0x%x\n", xhci->op_regs->config);
-    debug("\n");
-}
+// static void _log_op_regs(xhci_t *xhci)
+// {
+//     debug("===== xHCI Operational Registers (0x%llx) =====\n", (uint64_t)xhci->op_regs);
+//     debug("    usbcmd     : 0x%x\n", xhci->op_regs->usbcmd);
+//     debug("    usbsts     : 0x%x\n", xhci->op_regs->usbsts);
+//     debug("    pagesize   : 0x%x\n", xhci->op_regs->pagesize);
+//     debug("    dnctrl     : 0x%x\n", xhci->op_regs->dnctrl);
+//     debug("    crcr       : 0x%lx\n", xhci->op_regs->crcr);
+//     debug("    dcbaap     : 0x%lx\n", xhci->op_regs->dcbaap);
+//     debug("    config     : 0x%x\n", xhci->op_regs->config);
+//     debug("\n");
+// }
 
-static void _log_usbsts() 
-{
-    uint32_t status = xhci_dev->op_regs->usbsts;
-    debug("===== USBSTS =====\n");
-    if (status & STS_HALT)  debug("    Host Controlled Halted\n");
-    if (status & STS_FATAL)  debug("    Host System Error\n");
-    if (status & STS_EINT) debug("    Event Interrupt\n");
-    if (status & STS_PORT)  debug("    Port Change Detect\n");
-    if (status & STS_SAVE)  debug("    Save State Status\n");
-    if (status & STS_RESTORE)  debug("    Restore State Status\n");
-    if (status & STS_SRE)  debug("    Save/Restore Error\n");
-    if (status & STS_CNR)  debug("    Controller Not Ready\n");
-    if (status & STS_HCE)  debug("    Host Controller Error\n");
-    debug("\n");
-}
+// static void _log_usbsts() 
+// {
+//     uint32_t status = xhci_dev->op_regs->usbsts;
+//     debug("===== USBSTS =====\n");
+//     if (status & STS_HALT)  debug("    Host Controlled Halted\n");
+//     if (status & STS_FATAL)  debug("    Host System Error\n");
+//     if (status & STS_EINT) debug("    Event Interrupt\n");
+//     if (status & STS_PORT)  debug("    Port Change Detect\n");
+//     if (status & STS_SAVE)  debug("    Save State Status\n");
+//     if (status & STS_RESTORE)  debug("    Restore State Status\n");
+//     if (status & STS_SRE)  debug("    Save/Restore Error\n");
+//     if (status & STS_CNR)  debug("    Controller Not Ready\n");
+//     if (status & STS_HCE)  debug("    Host Controller Error\n");
+//     debug("\n");
+// }
 
 static void _xhci_update_erdp(xhci_ring_t *event_ring)
 {
@@ -346,7 +346,7 @@ xhci_event_cmd_t *xhci_send_command(xhci_t *xhci, xhci_trb_t *trb, uint32_t time
 {
     xhci->completion_trb = 0;
 //    xhci->irq_completed = 0;
-    __atomic_store_n(&xhci->irq_completed, 0, __ATOMIC_ACQUIRE);
+    __atomic_store_n(&xhci->irq_completed, 0, __ATOMIC_RELEASE);
 
     // Enqueue the TRB
     _enqueue_trb(xhci, trb);
@@ -369,7 +369,7 @@ xhci_event_cmd_t *xhci_send_command(xhci_t *xhci, xhci_trb_t *trb, uint32_t time
 //debug("\x1b[31m[xhci]\x1b[0m slot id %u\n", xhci_dev->completion_trb->slot_id);
 //    debug("[XHCI] CMD completed trd 0x%lX time 0x%lX\n", xhci->completion_trb, sleep_passed);
 //    xhci->irq_completed = 0;
-    __atomic_store_n(&xhci->irq_completed, 0, __ATOMIC_ACQ_REL);
+    __atomic_store_n(&xhci->irq_completed, 0, __ATOMIC_RELEASE);
     return xhci->completion_trb;
 }
 
@@ -550,10 +550,10 @@ static void xhci_config_runtime_regs(xhci_t *xhci)
 
     xhci->event_ring = xhci_event_ring_alloc(xhci, 256, ir);
 
-    debug("IMOD    : 0x%llx\n", ir->imod);
-    debug("ERSTSZ  : 0x%llx\n", ir->erst_size);
-    debug("ERSTBA  : 0x%llx\n", ir->erst_base);
-    debug("ERDP    : 0x%llx\n", ir->erst_dequeue);
+    // debug("IMOD    : 0x%llx\n", ir->imod);
+    // debug("ERSTSZ  : 0x%llx\n", ir->erst_size);
+    // debug("ERSTBA  : 0x%llx\n", ir->erst_base);
+    // debug("ERDP    : 0x%llx\n", ir->erst_dequeue);
 
     _acknowledge_irq(xhci, 0);
 }
@@ -743,7 +743,7 @@ static void _xhci_irq_handler(uint32_t sig, uint64_t irq)
        
    irq_act(irq, 0);
 }
-
+/*
 static void xhci_roothub_ports_status(xhci_t *xhci)
 {
 	u32 offset;
@@ -760,7 +760,7 @@ static void xhci_roothub_ports_status(xhci_t *xhci)
     }
 
 }
-
+*/
 
 int xhci_init(void *base_addr, int irq)
 {
@@ -773,7 +773,7 @@ int xhci_init(void *base_addr, int irq)
 
     xhci_dev->cap_regs = (volatile struct xhci_cap_regs *)base_addr;
     uint32_t len = HC_LENGTH(xhci_dev->cap_regs->hc_capbase);
-    debug("[XHCI] caps len 0x%X\n", len);
+//    debug("[XHCI] caps len 0x%X\n", len);
     xhci_dev->op_regs = (volatile struct xhci_op_regs *)(base_addr + len);
 
     xhci_dev->run_regs = (volatile struct xhci_run_regs *)(base_addr + xhci_dev->cap_regs->run_regs_off);
@@ -789,23 +789,23 @@ int xhci_init(void *base_addr, int irq)
     xhci_dev->max_ports = HCS_MAX_PORTS(xhci_dev->hcs_params1);
     xhci_dev->max_slots = HCS_MAX_SLOTS(xhci_dev->hcs_params1);
 
-    debug("[XHCI] operational regs at 0x%lX\n", xhci_dev->op_regs);
-    debug("[XHCI] init host\n");
-    debug("[XHCI] xHCI version 0x%X\n", HC_VERSION(xhci_dev->cap_regs->hc_capbase));
+    // debug("[XHCI] operational regs at 0x%lX\n", xhci_dev->op_regs);
+    // debug("[XHCI] init host\n");
+    // debug("[XHCI] xHCI version 0x%X\n", HC_VERSION(xhci_dev->cap_regs->hc_capbase));
 
-    debug("[XHCI] xHCI max ports %d\n", xhci_dev->max_ports);
-	debug("[XHCI] xHCI max slots %d\n", xhci_dev->max_slots);
-	debug("[XHCI] xHCI max intps %d\n", HCS_MAX_INTRS(xhci_dev->hcs_params1));
+    // debug("[XHCI] xHCI max ports %d\n", xhci_dev->max_ports);
+	// debug("[XHCI] xHCI max slots %d\n", xhci_dev->max_slots);
+	// debug("[XHCI] xHCI max intps %d\n", HCS_MAX_INTRS(xhci_dev->hcs_params1));
 
     xhci_dev->max_scratchpads = HCS_MAX_SCRATCHPAD(xhci_dev->hcs_params1);
-    debug("[XHCI] xHCI max sctatchpads %d\n", xhci_dev->max_scratchpads);
+//    debug("[XHCI] xHCI max sctatchpads %d\n", xhci_dev->max_scratchpads);
 
     xhci_dev->max_erst = HCS_ERST_MAX(xhci_dev->hcs_params2); 
-    debug("[XHCI] xHCI max ERST %d\n", xhci_dev->max_erst);  
+//    debug("[XHCI] xHCI max ERST %d\n", xhci_dev->max_erst);  
 
-    debug("[XHCI] Device context is %u bytes\n", HCC_64BYTE_CONTEXT(xhci_dev->hcc_params) ? 64 : 32);
+//    debug("[XHCI] Device context is %u bytes\n", HCC_64BYTE_CONTEXT(xhci_dev->hcc_params) ? 64 : 32);
     xhci_dev->head_xcap_ptr = (volatile uint32_t *)(base_addr + (HCC_EXT_CAPS(xhci_dev->hcc_params) << 2));
-    debug("[XHCI] Extra capatilities start at 0x%lX\n", xhci_dev->head_xcap_ptr);  
+ //   debug("[XHCI] Extra capatilities start at 0x%lX\n", xhci_dev->head_xcap_ptr);  
 
  //   _log_op_regs(xhci_dev);
 
@@ -837,7 +837,7 @@ int xhci_init(void *base_addr, int irq)
     signal_action_t irqhand;
     irqhand.handler = _xhci_irq_handler;
     signal_action(1, &irqhand);
-    debug("[XHCI] set IRQ %d\n", irq);
+//    debug("[XHCI] set IRQ %d\n", irq);
     irq_set(irq, 0);
 
     ret = xhci_start_host();
@@ -878,8 +878,8 @@ static int _parce_extended_caps()
                 ports[(XHCI_EXT_PORT_OFF(ptr->port_info)-1 + i)].maj_rev = XHCI_EXT_PORT_MAJOR(ptr->revision);
                 ports[(XHCI_EXT_PORT_OFF(ptr->port_info)-1 + i)].min_rev = XHCI_EXT_PORT_MINOR(ptr->revision);
  
-                debug("[XHCI] Ext Cap USB%u.%u port %u\n", XHCI_EXT_PORT_MAJOR(ptr->revision), XHCI_EXT_PORT_MINOR(ptr->revision),
-                            (XHCI_EXT_PORT_OFF(ptr->port_info)-1 + i));                
+                // debug("[XHCI] Ext Cap USB%u.%u port %u\n", XHCI_EXT_PORT_MAJOR(ptr->revision), XHCI_EXT_PORT_MINOR(ptr->revision),
+                //             (XHCI_EXT_PORT_OFF(ptr->port_info)-1 + i));                
             }
         }            
         next = XHCI_EXT_CAPS_NEXT(ptr->revision);                
@@ -900,10 +900,10 @@ int xhci_start_host()
     cmd |= CMD_EIE;
     xhci_dev->op_regs->usbcmd = cmd;
 
-    int ret = xhci_handshake(&xhci_dev->op_regs->usbsts, STS_HALT, 0, XHCI_MAX_HALT_USEC);
+    int ret = xhci_handshake((void *)&xhci_dev->op_regs->usbsts, STS_HALT, 0, XHCI_MAX_HALT_USEC);
     if (ret < 0) return ret;
 
-    ret = xhci_handshake(&xhci_dev->op_regs->usbsts, STS_CNR, 0, XHCI_MAX_HALT_USEC);
+    ret = xhci_handshake((void *)&xhci_dev->op_regs->usbsts, STS_CNR, 0, XHCI_MAX_HALT_USEC);
     if (ret < 0)
             return ret;
 
@@ -934,240 +934,240 @@ void _dump_device_context(xhci_virt_dev_t *dev)
     }
 }
 
-int xhci_enumerate_device(uint8_t slot_id)
-{
-    usb_device_descriptor_t dev_desc;
-    usb_config_descriptor_t config_desc;
-    int ret;
+// int xhci_enumerate_device(uint8_t slot_id)
+// {
+//     usb_device_descriptor_t dev_desc;
+//     usb_config_descriptor_t config_desc;
+//     int ret;
     
-    debug("[XHCI] Starting device enumeration for slot %u\n", slot_id);
+//     debug("[XHCI] Starting device enumeration for slot %u\n", slot_id);
     
-    // Get the first 8 bytes of the device descriptor to determine max packet size
-    ret = xhci_get_descriptor(xhci_dev, slot_id, USB_DT_DEVICE, 0, 0, 
-                             &dev_desc, 8, NULL);
-    if (ret != SUCCESS) {
-        debug("[XHCI] Failed to get initial device descriptor for slot %u\n", slot_id);
-        return ret;
-    }
+//     // Get the first 8 bytes of the device descriptor to determine max packet size
+//     ret = xhci_get_descriptor(xhci_dev, slot_id, USB_DT_DEVICE, 0, 0, 
+//                              &dev_desc, 8, NULL);
+//     if (ret != SUCCESS) {
+//         debug("[XHCI] Failed to get initial device descriptor for slot %u\n", slot_id);
+//         return ret;
+//     }
 
-    uint16_t max_packet_size = (dev_desc.bMaxPacketSize0 == 9) ? 512 : dev_desc.bMaxPacketSize0;
+//     uint16_t max_packet_size = (dev_desc.bMaxPacketSize0 == 9) ? 512 : dev_desc.bMaxPacketSize0;
 
-    debug("[XHCI] Initial Device Descriptor for slot %u:\n", slot_id);
-    debug("  Max Packet Size EP0: %u\n", max_packet_size); 
+//     debug("[XHCI] Initial Device Descriptor for slot %u:\n", slot_id);
+//     debug("  Max Packet Size EP0: %u\n", max_packet_size); 
     
 
-    // Update the endpoint 0 max packet size
-    xhci_virt_dev_t *dev = xhci_dev->devs[slot_id];
-    if (!dev) {
-        debug("[XHCI] No device context for slot %u\n", slot_id);
-        return -EINVAL;
-    }
+//     // Update the endpoint 0 max packet size
+//     xhci_virt_dev_t *dev = xhci_dev->devs[slot_id];
+//     if (!dev) {
+//         debug("[XHCI] No device context for slot %u\n", slot_id);
+//         return -EINVAL;
+//     }
 
-    uint32_t *in_ctx = (uint32_t *)dev->in_ctx;
-    uint32_t ctx_size = HCC_64BYTE_CONTEXT(xhci_dev->hcc_params) ? 64 : 32;
+//     uint32_t *in_ctx = (uint32_t *)dev->in_ctx;
+//     uint32_t ctx_size = HCC_64BYTE_CONTEXT(xhci_dev->hcc_params) ? 64 : 32;
     
-// //    in_ctx[0] = 1<<1; 
+// // //    in_ctx[0] = 1<<1; 
 
-    // Endpoint 0 Context (starts at 2*ctx_size offset)
-    uint32_t *ep0_ctx = &in_ctx[2 *(ctx_size/4)];
-    xhci_ep_ctx_t *ep0_context = (xhci_ep_ctx_t *)ep0_ctx;
+//     // Endpoint 0 Context (starts at 2*ctx_size offset)
+//     uint32_t *ep0_ctx = &in_ctx[2 *(ctx_size/4)];
+//     xhci_ep_ctx_t *ep0_context = (xhci_ep_ctx_t *)ep0_ctx;
 
-    ep0_context->ep_info2 &= ~MAX_PACKET_MASK;
-    ep0_context->ep_info2 |= MAX_PACKET(max_packet_size);
+//     ep0_context->ep_info2 &= ~MAX_PACKET_MASK;
+//     ep0_context->ep_info2 |= MAX_PACKET(max_packet_size);
 
-    wmb();
-    // Flush the input context to DMA memory
-    cache_flush((void *)dma_get_phys(xhci_dev->xmem_pool, dev->in_ctx), 3 * ctx_size);
+//     wmb();
+//     // Flush the input context to DMA memory
+//     cache_flush((void *)dma_get_phys(xhci_dev->xmem_pool, dev->in_ctx), 3 * ctx_size);
 
-//     xhci_evaluate_context(slot_id);
+// //     xhci_evaluate_context(slot_id);
 
-    ret = xhci_address_device(slot_id, false);
-    if (ret != SUCCESS) {
-        debug("[XHCI] Failed to address device for slot %u\n", slot_id);
-        return ret;
-    }
-//    _dump_device_context(xhci_dev->devs[slot_id]);
+//     ret = xhci_address_device(slot_id, false);
+//     if (ret != SUCCESS) {
+//         debug("[XHCI] Failed to address device for slot %u\n", slot_id);
+//         return ret;
+//     }
+// //    _dump_device_context(xhci_dev->devs[slot_id]);
 
 
-    // Get device descriptor
-    ret = xhci_get_descriptor(xhci_dev, slot_id, USB_DT_DEVICE, 0, 0, 
-                             &dev_desc, sizeof(dev_desc), NULL);
-    if (ret != SUCCESS) {
-        debug("[XHCI] Failed to get device descriptor for slot %u\n", slot_id);
-        return ret;
-    }
+//     // Get device descriptor
+//     ret = xhci_get_descriptor(xhci_dev, slot_id, USB_DT_DEVICE, 0, 0, 
+//                              &dev_desc, sizeof(dev_desc), NULL);
+//     if (ret != SUCCESS) {
+//         debug("[XHCI] Failed to get device descriptor for slot %u\n", slot_id);
+//         return ret;
+//     }
     
-    // Print device descriptor information
-    debug("[XHCI] Device Descriptor for slot %u:\n", slot_id);
-    debug("  USB Version: %x.%02x\n", (dev_desc.bcdUSB >> 8) & 0xFF, dev_desc.bcdUSB & 0xFF);
-    debug("  Device Class: 0x%02x\n", dev_desc.bDeviceClass);
-    debug("  Device SubClass: 0x%02x\n", dev_desc.bDeviceSubClass);
-    debug("  Device Protocol: 0x%02x\n", dev_desc.bDeviceProtocol);
-    debug("  Max Packet Size EP0: %u\n", dev_desc.bMaxPacketSize0);
-    debug("  Vendor ID: 0x%04x\n", dev_desc.idVendor);
-    debug("  Product ID: 0x%04x\n", dev_desc.idProduct);
-    debug("  Device Version: %x.%02x\n", (dev_desc.bcdDevice >> 8) & 0xFF, dev_desc.bcdDevice & 0xFF);
-    debug("  Manufacturer String: %u\n", dev_desc.iManufacturer);
-    debug("  Product String: %u\n", dev_desc.iProduct);
-    debug("  Serial Number String: %u\n", dev_desc.iSerialNumber);
-    debug("  Number of Configurations: %u\n", dev_desc.bNumConfigurations);
+//     // Print device descriptor information
+//     debug("[XHCI] Device Descriptor for slot %u:\n", slot_id);
+//     debug("  USB Version: %x.%02x\n", (dev_desc.bcdUSB >> 8) & 0xFF, dev_desc.bcdUSB & 0xFF);
+//     debug("  Device Class: 0x%02x\n", dev_desc.bDeviceClass);
+//     debug("  Device SubClass: 0x%02x\n", dev_desc.bDeviceSubClass);
+//     debug("  Device Protocol: 0x%02x\n", dev_desc.bDeviceProtocol);
+//     debug("  Max Packet Size EP0: %u\n", dev_desc.bMaxPacketSize0);
+//     debug("  Vendor ID: 0x%04x\n", dev_desc.idVendor);
+//     debug("  Product ID: 0x%04x\n", dev_desc.idProduct);
+//     debug("  Device Version: %x.%02x\n", (dev_desc.bcdDevice >> 8) & 0xFF, dev_desc.bcdDevice & 0xFF);
+//     debug("  Manufacturer String: %u\n", dev_desc.iManufacturer);
+//     debug("  Product String: %u\n", dev_desc.iProduct);
+//     debug("  Serial Number String: %u\n", dev_desc.iSerialNumber);
+//     debug("  Number of Configurations: %u\n", dev_desc.bNumConfigurations);
     
-    // Get and print string descriptors
-    uint16_t lang_id = 0x0409; // Default to English (US)
+//     // Get and print string descriptors
+//     uint16_t lang_id = 0x0409; // Default to English (US)
     
-    // Try to get supported languages from string descriptor 0
-    usb_string_descriptor_t lang_desc;
-    ret = xhci_get_descriptor(xhci_dev, slot_id, USB_DT_STRING, 0, 0, 
-                             &lang_desc, sizeof(lang_desc), NULL);
+//     // Try to get supported languages from string descriptor 0
+//     usb_string_descriptor_t lang_desc;
+//     ret = xhci_get_descriptor(xhci_dev, slot_id, USB_DT_STRING, 0, 0, 
+//                              &lang_desc, sizeof(lang_desc), NULL);
 
-    if (ret == SUCCESS && lang_desc.bLength >= 4) {
-        // Use the first language ID from the list
-        lang_id = lang_desc.wData[0];
-        debug("[XHCI] Using language ID: 0x%04x\n", lang_id);
-    }
+//     if (ret == SUCCESS && lang_desc.bLength >= 4) {
+//         // Use the first language ID from the list
+//         lang_id = lang_desc.wData[0];
+//         debug("[XHCI] Using language ID: 0x%04x\n", lang_id);
+//     }
     
-    // Get manufacturer string
-    if (dev_desc.iManufacturer != 0) {
-        char manufacturer[256];
-        ret = xhci_get_descriptor(xhci_dev, slot_id, USB_DT_STRING, dev_desc.iManufacturer, lang_id,
-                                 manufacturer, sizeof(manufacturer), NULL);
-        if (ret == SUCCESS) {
-            debug("[XHCI] Manufacturer String: ");
-            print_utf16_string((const uint16_t*)(manufacturer + 2), (sizeof(manufacturer) - 2) / 2);
-        } else {
-            debug("[XHCI] Failed to get manufacturer string\n");
-        }
-    }
+//     // Get manufacturer string
+//     if (dev_desc.iManufacturer != 0) {
+//         char manufacturer[256];
+//         ret = xhci_get_descriptor(xhci_dev, slot_id, USB_DT_STRING, dev_desc.iManufacturer, lang_id,
+//                                  manufacturer, sizeof(manufacturer), NULL);
+//         if (ret == SUCCESS) {
+//             debug("[XHCI] Manufacturer String: ");
+//             print_utf16_string((const uint16_t*)(manufacturer + 2), (sizeof(manufacturer) - 2) / 2);
+//         } else {
+//             debug("[XHCI] Failed to get manufacturer string\n");
+//         }
+//     }
     
-    // Get product string
-    if (dev_desc.iProduct != 0) {
-        char product[256];
-        ret = xhci_get_descriptor(xhci_dev, slot_id, USB_DT_STRING, dev_desc.iProduct, lang_id,
-                                 product, sizeof(product), NULL);
-        if (ret == SUCCESS) {
-            debug("[XHCI] Product String: ");
-            print_utf16_string((const uint16_t*)(product + 2), (sizeof(product) - 2) / 2);
-        } else {
-            debug("[XHCI] Failed to get product string\n");
-        }
-    }
+//     // Get product string
+//     if (dev_desc.iProduct != 0) {
+//         char product[256];
+//         ret = xhci_get_descriptor(xhci_dev, slot_id, USB_DT_STRING, dev_desc.iProduct, lang_id,
+//                                  product, sizeof(product), NULL);
+//         if (ret == SUCCESS) {
+//             debug("[XHCI] Product String: ");
+//             print_utf16_string((const uint16_t*)(product + 2), (sizeof(product) - 2) / 2);
+//         } else {
+//             debug("[XHCI] Failed to get product string\n");
+//         }
+//     }
     
-    // Get serial number string
-    if (dev_desc.iSerialNumber != 0) {
-        char serial[256];
-        ret = xhci_get_descriptor(xhci_dev, slot_id, USB_DT_STRING, dev_desc.iSerialNumber, lang_id,
-                                 serial, sizeof(serial), NULL);
-        if (ret == SUCCESS) {
-            debug("[XHCI] Serial Number String: ");
-            print_utf16_string((const uint16_t*)(serial + 2), (sizeof(serial) - 2) / 2);
-        } else {
-            debug("[XHCI] Failed to get serial number string\n");
-        }
-    }
+//     // Get serial number string
+//     if (dev_desc.iSerialNumber != 0) {
+//         char serial[256];
+//         ret = xhci_get_descriptor(xhci_dev, slot_id, USB_DT_STRING, dev_desc.iSerialNumber, lang_id,
+//                                  serial, sizeof(serial), NULL);
+//         if (ret == SUCCESS) {
+//             debug("[XHCI] Serial Number String: ");
+//             print_utf16_string((const uint16_t*)(serial + 2), (sizeof(serial) - 2) / 2);
+//         } else {
+//             debug("[XHCI] Failed to get serial number string\n");
+//         }
+//     }
     
-    // Get configuration descriptor (first one)
-    if (dev_desc.bNumConfigurations > 0) {
-        ret = xhci_get_descriptor(xhci_dev, slot_id, USB_DT_CONFIG, 0, 0,
-                                 &config_desc, sizeof(config_desc), NULL);
-        if (ret != SUCCESS) {
-            debug("[XHCI] Failed to get configuration descriptor for slot %u\n", slot_id);
-            return ret;
-        }
+//     // Get configuration descriptor (first one)
+//     if (dev_desc.bNumConfigurations > 0) {
+//         ret = xhci_get_descriptor(xhci_dev, slot_id, USB_DT_CONFIG, 0, 0,
+//                                  &config_desc, sizeof(config_desc), NULL);
+//         if (ret != SUCCESS) {
+//             debug("[XHCI] Failed to get configuration descriptor for slot %u\n", slot_id);
+//             return ret;
+//         }
         
-        // Print configuration descriptor information
-        debug("[XHCI] Configuration Descriptor for slot %u:\n", slot_id);
-        debug("  Total Length: %u\n", config_desc.wTotalLength);
-        debug("  Number of Interfaces: %u\n", config_desc.bNumInterfaces);
-        debug("  Configuration Value: %u\n", config_desc.bConfigurationValue);
-        debug("  Configuration String: %u\n", config_desc.iConfiguration);
-        debug("  Attributes: 0x%02x\n", config_desc.bmAttributes);
-        debug("  Max Power: %u mA\n", config_desc.bMaxPower * 2);
+//         // Print configuration descriptor information
+//         debug("[XHCI] Configuration Descriptor for slot %u:\n", slot_id);
+//         debug("  Total Length: %u\n", config_desc.wTotalLength);
+//         debug("  Number of Interfaces: %u\n", config_desc.bNumInterfaces);
+//         debug("  Configuration Value: %u\n", config_desc.bConfigurationValue);
+//         debug("  Configuration String: %u\n", config_desc.iConfiguration);
+//         debug("  Attributes: 0x%02x\n", config_desc.bmAttributes);
+//         debug("  Max Power: %u mA\n", config_desc.bMaxPower * 2);
 
    
-        // Get the full configuration descriptor including all interfaces and endpoints
-        uint8_t *config_buffer = (uint8_t *)malloc(config_desc.wTotalLength);
-        if (!config_buffer) {
-            debug("[XHCI] Failed to allocate buffer for full configuration descriptor\n");
-            return -ENOMEM;
-        }
+//         // Get the full configuration descriptor including all interfaces and endpoints
+//         uint8_t *config_buffer = (uint8_t *)malloc(config_desc.wTotalLength);
+//         if (!config_buffer) {
+//             debug("[XHCI] Failed to allocate buffer for full configuration descriptor\n");
+//             return -ENOMEM;
+//         }
         
-        ret = xhci_get_descriptor(xhci_dev, slot_id, USB_DT_CONFIG, 0, 0,
-                                 config_buffer, config_desc.wTotalLength, NULL);
-        if (ret != SUCCESS) {
-            debug("[XHCI] Failed to get full configuration descriptor for slot %u\n", slot_id);
-            free(config_buffer);
-            return ret;
-        }
+//         ret = xhci_get_descriptor(xhci_dev, slot_id, USB_DT_CONFIG, 0, 0,
+//                                  config_buffer, config_desc.wTotalLength, NULL);
+//         if (ret != SUCCESS) {
+//             debug("[XHCI] Failed to get full configuration descriptor for slot %u\n", slot_id);
+//             free(config_buffer);
+//             return ret;
+//         }
         
-        // Parse interfaces and endpoints
-        uint8_t *ptr = config_buffer + sizeof(usb_config_descriptor_t);
-        uint16_t remaining = config_desc.wTotalLength - sizeof(usb_config_descriptor_t);
+//         // Parse interfaces and endpoints
+//         uint8_t *ptr = config_buffer + sizeof(usb_config_descriptor_t);
+//         uint16_t remaining = config_desc.wTotalLength - sizeof(usb_config_descriptor_t);
         
-        while (remaining >= 2) {  // Need at least length and type
-            uint8_t desc_length = ptr[0];
-            uint8_t desc_type = ptr[1];
+//         while (remaining >= 2) {  // Need at least length and type
+//             uint8_t desc_length = ptr[0];
+//             uint8_t desc_type = ptr[1];
             
-            if (desc_length < 2 || desc_length > remaining) {
-                break;  // Invalid descriptor
-            }
+//             if (desc_length < 2 || desc_length > remaining) {
+//                 break;  // Invalid descriptor
+//             }
             
-            if (desc_type == USB_DT_INTERFACE) {
-                usb_interface_descriptor_t *iface_desc = (usb_interface_descriptor_t *)ptr;
-                debug("[XHCI] Interface %u: Class=0x%02x, SubClass=0x%02x, Protocol=0x%02x, Endpoints=%u\n",
-                      iface_desc->bInterfaceNumber, iface_desc->bInterfaceClass,
-                      iface_desc->bInterfaceSubClass, iface_desc->bInterfaceProtocol,
-                      iface_desc->bNumEndpoints);
-            } else if (desc_type == USB_DT_ENDPOINT) {
-                usb_endpoint_descriptor_t *ep_desc = (usb_endpoint_descriptor_t *)ptr;
-                uint8_t ep_addr = ep_desc->bEndpointAddress;
-                uint8_t ep_num = ep_addr & 0x0F;
+//             if (desc_type == USB_DT_INTERFACE) {
+//                 usb_interface_descriptor_t *iface_desc = (usb_interface_descriptor_t *)ptr;
+//                 debug("[XHCI] Interface %u: Class=0x%02x, SubClass=0x%02x, Protocol=0x%02x, Endpoints=%u\n",
+//                       iface_desc->bInterfaceNumber, iface_desc->bInterfaceClass,
+//                       iface_desc->bInterfaceSubClass, iface_desc->bInterfaceProtocol,
+//                       iface_desc->bNumEndpoints);
+//             } else if (desc_type == USB_DT_ENDPOINT) {
+//                 usb_endpoint_descriptor_t *ep_desc = (usb_endpoint_descriptor_t *)ptr;
+//                 uint8_t ep_addr = ep_desc->bEndpointAddress;
+//                 uint8_t ep_num = ep_addr & 0x0F;
 
-                uint8_t ep_type = ep_desc->bmAttributes & 0x03;
+//                 uint8_t ep_type = ep_desc->bmAttributes & 0x03;
                 
-                debug("[XHCI] Endpoint 0x%02x: Type=%s, MaxPacket=%u, Interval=%u\n",
-                      ep_addr,
-                      ep_type == USB_ENDPOINT_XFER_BULK ? "Bulk" :
-                      ep_type == USB_ENDPOINT_XFER_INT ? "Interrupt" :
-                      ep_type == USB_ENDPOINT_XFER_ISOC ? "Isochronous" : "Control",
-                      ep_desc->wMaxPacketSize, ep_desc->bInterval);
+//                 debug("[XHCI] Endpoint 0x%02x: Type=%s, MaxPacket=%u, Interval=%u\n",
+//                       ep_addr,
+//                       ep_type == USB_ENDPOINT_XFER_BULK ? "Bulk" :
+//                       ep_type == USB_ENDPOINT_XFER_INT ? "Interrupt" :
+//                       ep_type == USB_ENDPOINT_XFER_ISOC ? "Isochronous" : "Control",
+//                       ep_desc->wMaxPacketSize, ep_desc->bInterval);
                 
-                // Allocate transfer ring for bulk endpoints
-                if (ep_type == USB_ENDPOINT_XFER_BULK) {
-                    xhci_virt_dev_t *dev = xhci_dev->devs[slot_id];
-                    if (dev && ep_num > 0 && ep_num < EP_CTX_PER_DEV) {
-                        if (!dev->eps[ep_num]->tr_ring) {
-                            dev->eps[ep_num]->tr_ring = xhci_alloc_transfer_ring(xhci_dev, 256);
-                            if (dev->eps[ep_num]->tr_ring) {
-                                debug("[XHCI] Allocated transfer ring for EP%u on slot %u\n", ep_num, slot_id);
-                            } else {
-                                debug("[XHCI] Failed to allocate transfer ring for EP%u on slot %u\n", ep_num, slot_id);
-                            }
-                        }
-                    }
-                }
-            }    
-            ptr += desc_length;
-            remaining -= desc_length;
+//                 // Allocate transfer ring for bulk endpoints
+//                 if (ep_type == USB_ENDPOINT_XFER_BULK) {
+//                     xhci_virt_dev_t *dev = xhci_dev->devs[slot_id];
+//                     if (dev && ep_num > 0 && ep_num < EP_CTX_PER_DEV) {
+//                         if (!dev->eps[ep_num]->tr_ring) {
+//                             dev->eps[ep_num]->tr_ring = xhci_alloc_transfer_ring(xhci_dev, 256);
+//                             if (dev->eps[ep_num]->tr_ring) {
+//                                 debug("[XHCI] Allocated transfer ring for EP%u on slot %u\n", ep_num, slot_id);
+//                             } else {
+//                                 debug("[XHCI] Failed to allocate transfer ring for EP%u on slot %u\n", ep_num, slot_id);
+//                             }
+//                         }
+//                     }
+//                 }
+//             }    
+//             ptr += desc_length;
+//             remaining -= desc_length;
          
-        }
+//         }
         
-        free(config_buffer);
+//         free(config_buffer);
 
-        // Set the first configuration
-        ret = xhci_set_configuration(xhci_dev, slot_id, config_desc.bConfigurationValue);
-        if (ret != SUCCESS) {
-            debug("[XHCI] Failed to set configuration %u for slot %u\n", 
-                  config_desc.bConfigurationValue, slot_id);
-            return ret;
-        }
+//         // Set the first configuration
+//         ret = xhci_set_configuration(xhci_dev, slot_id, config_desc.bConfigurationValue);
+//         if (ret != SUCCESS) {
+//             debug("[XHCI] Failed to set configuration %u for slot %u\n", 
+//                   config_desc.bConfigurationValue, slot_id);
+//             return ret;
+//         }
         
-        debug("[XHCI] Successfully set configuration %u for slot %u\n", 
-              config_desc.bConfigurationValue, slot_id);
-    }
+//         debug("[XHCI] Successfully set configuration %u for slot %u\n", 
+//               config_desc.bConfigurationValue, slot_id);
+//     }
     
-    debug("[XHCI] Device enumeration completed for slot %u\n", slot_id);
-    return SUCCESS;
-}
+//     debug("[XHCI] Device enumeration completed for slot %u\n", slot_id);
+//     return SUCCESS;
+// }
 
 void xhci_hub_events(void)
 {

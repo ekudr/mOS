@@ -20,7 +20,6 @@ extern "C" {
 
 int debug(const char *format, ...);
 
-char* sbrk(int);
 
 int sys_wait_irq(void);
 //uint64_t getpid(void);

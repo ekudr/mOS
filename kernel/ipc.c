@@ -78,7 +78,7 @@ static uint8_t ipc_caps_transfer(uint64_t info, task_t *sender, task_t *receiver
 void do_ipc_transfer(task_t *sender, task_t *receiver)
 {
     int msg_transferred;
-    uint8_t xcaps;
+    uint8_t xcaps = 0;
     uint64_t info = sender->trapframe->a1;
     ipc_msg_info_t mi = msginfo_from_word(info);
     
