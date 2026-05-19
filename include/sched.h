@@ -265,8 +265,6 @@ int sched_taskfree(task_t *t);
 task_t *sched_taskalloc(void);
 pagetable_t sched_task_pagetable(task_t *t);
 void sched_task_freepagetable(pagetable_t pagetable, uint64_t sz);
-uint16_t sched_alloc_asid(uint64_t id);
-//int sched_growtask(int n);
 kerrno_t uvm_alloc_mmreg(task_t *task, uint64_t vaddr, uint64_t size, uint64_t type, int xperm);
 struct mem_region *uvm_alloc_vmem(task_t *task, uint64_t vaddr, size_t size);
 struct mem_region *uvm_user_memmap(task_t *task, uint64_t addr, uint64_t size, uint64_t flags, uint64_t paddr);

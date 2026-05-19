@@ -110,10 +110,10 @@ userret:
         # a0: user page table, for satp.
 
         # switch to the user page table.
-        sfence.vma zero, zero
+#        sfence.vma zero, zero
         csrw satp, a0
-        sfence.vma zero, zero
-#       sfence.vma zero, a1
+#        sfence.vma zero, zero
+        sfence.vma zero, a1
         li a0, TRAPFRAME
 
         # put the saved user a0 in sscratch, so we

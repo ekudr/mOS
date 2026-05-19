@@ -221,7 +221,7 @@ int sys_cap_shmem_create(task_t *t)
     if (shm == NULL) return -ENOMEM;
 
     shm = (shmem_block_t *)ko_init((kobject_t *)shm, t, KO_SHMEM);
-      
+    initlock(&shm->lock, "shmem");
     shm->size = size;
     shm->npages = sz >> PAGE_SHIFT;
 

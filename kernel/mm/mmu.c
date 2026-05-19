@@ -58,62 +58,56 @@ mmu_walk_addr(pagetable_t pagetable, uint64_t va)
     return pa;
 }
 
+// Internal: map pages without acquiring mmu_lock. Caller must hold mmu_lock.
+static int
+__mmu_map_pages_locked(pagetable_t pagetable, uint64_t va, uint64_t size, uint64_t pa, int perm)
+{
+    uint64_t a, last;
+    pte_t *pte;
+
+    if (perm & PTE_LEAF_MASK)
+        perm |= (PTE_A | PTE_D);
+    else
+        perm &= ~(PTE_A | PTE_D | PTE_U);
+
+    a = PGROUNDDOWN(va);
+    last = PGROUNDDOWN(va + size - 1);
+    for (;;)
+    {
+        if ((pte = mmu_walk(pagetable, a, 1)) == 0)
+            return -1;
+        if (*pte & PTE_V)
+        {
+            printf("addr 0x%lX ", a);
+            panic("mappages: remap");
+        }
+        *pte = PA2PTE(pa) | perm | PTE_V;
+        mmu_invalidate_tlb_by_vaddr(a);
+        if (a == last)
+            break;
+        a += PAGE_SIZE;
+        pa += PAGE_SIZE;
+    }
+    return 0;
+}
+
 // Create PTEs for virtual addresses starting at va that refer to
 // physical addresses starting at pa. va and size might not
 // be page-aligned. Returns 0 on success, -1 if walk() couldn't
 // allocate a needed page-table page.
 int mmu_map_pages(pagetable_t pagetable, uint64_t va, uint64_t size, uint64_t pa, int perm)
 {
-    uint64_t a, last;
-    pte_t *pte;
+    int rc;
 
     if (size == 0)
         panic("mappages: size");
 
-    /* Test if this is a leaf PTE, if it is, set A+D even if they are not used
-     * by the implementation.
-     *
-     * If not, clear A+D+U because the spec. says:
-     * For non-leaf PTEs, the D, A, and U bits are reserved for future use and
-     * must be cleared by software for forward compatibility.
-     */
-//    debug("[MMU] map pt 0x%lX va 0x%lX size 0x%lX pa 0x%lX\n", pagetable, va, size, pa);
-
-        if (perm & PTE_LEAF_MASK)
-        {
-            perm |= (PTE_A | PTE_D);
-        }
-      else
-        {
-          perm &= ~(PTE_A | PTE_D | PTE_U);
-        }
     acquire(&mmu_lock);
-    a = PGROUNDDOWN(va);
-    last = PGROUNDDOWN(va + size - 1);
-    for (;;)
-    {
-        //        debug("mmu_map pt 0x%lX va 0x%lX \n", pagetable, a);
-        if ((pte = mmu_walk(pagetable, a, 1)) == 0)
-            return -1;
-
-        if (*pte & PTE_V)
-        {
-            printf("addr 0x%lX ", a);
-            panic("mappages: remap");
-        }
-
-        *pte = PA2PTE(pa) | perm | PTE_V;
-
-        mmu_invalidate_tlb_by_vaddr(a);
-
-        if (a == last)
-            break;
-        a += PAGE_SIZE;
-        pa += PAGE_SIZE;
-    }
-    sbi_remote_sfence_vma(va, size);
+    rc = __mmu_map_pages_locked(pagetable, va, size, pa, perm);
+    if (rc == 0)
+        sbi_remote_sfence_vma(va, size);
     release(&mmu_lock);
-    return 0;
+    return rc;
 }
 
 /*
@@ -148,26 +142,31 @@ mmu_memmap(pagetable_t pgtable, uint64_t vaddr, uint64_t size, int perm)
     return SUCCESS;
 }
 
-int mmu_move_pages(pagetable_t from, pagetable_t to, uint64_t va_src, 
+int mmu_move_pages(pagetable_t from, pagetable_t to, uint64_t va_src,
                     uint64_t va_dst, uint64_t len, int perm)
 {
-//    debug("\x1b[31m[MMU]\x1b[0m move pages from pt 0x%lX to 0x%lX 0x%lX => 0x%lX %d blocks\n", 
-//            from, to, va_src, va_dst, len);
+    uint64_t va_src_start = va_src;
+    int rc = SUCCESS;
 
+    acquire(&mmu_lock);
     for (int i = 0; i < len; i++, va_src += PAGE_SIZE, va_dst += PAGE_SIZE)
     {
         pte_t *pte = mmu_walk(from, va_src, 0);
-        if (pte == NULL || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0) 
-                return -EINVAL;
-
-        mmu_map_pages(to, va_dst, PAGE_SIZE, PTE2PA((uint64_t)*pte), perm);
+        if (pte == NULL || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0) {
+            rc = -EINVAL;
+            goto out;
+        }
+        if (__mmu_map_pages_locked(to, va_dst, PAGE_SIZE, PTE2PA((uint64_t)*pte), perm) != 0) {
+            rc = -ENOMEM;
+            goto out;
+        }
         *pte = 0;
-
-    //    mmu_invalidate_tlbs();
-        
+        mmu_invalidate_tlb_by_vaddr(va_src);
     }
-//    sbi_remote_sfence_vma(va_dst, len << PAGE_SHIFT);
-    return SUCCESS;
+    sbi_remote_sfence_vma(va_src_start, (uint64_t)len << PAGE_SHIFT);
+out:
+    release(&mmu_lock);
+    return rc;
 }
 
 /*
@@ -187,21 +186,17 @@ pagetable_t mmu_user_pt_create()
     return pgtable;
 }
 
-/*
- * Recursively free page-table pages.
- * All leaf mappings must already have been removed.
- */
-void mmu_free_walk(pagetable_t pagetable)
+// Internal recursive walk — caller holds mmu_lock.
+static void
+__mmu_free_walk_locked(pagetable_t pagetable)
 {
-    // there are 2^9 = 512 PTEs in a page table.
     for (int i = 0; i < 512; i++)
     {
         pte_t pte = pagetable[i];
         if ((pte & PTE_V) && (pte & (PTE_R | PTE_W | PTE_X)) == 0)
         {
-            // this PTE points to a lower-level page table.
             uint64_t child = PTE2PA(pte);
-            mmu_free_walk((pagetable_t)PA2DA(child));
+            __mmu_free_walk_locked((pagetable_t)PA2DA(child));
             pagetable[i] = 0;
         }
         else if (pte & PTE_V)
@@ -210,6 +205,17 @@ void mmu_free_walk(pagetable_t pagetable)
         }
     }
     pgfree(DA2PPN(pagetable));
+}
+
+/*
+ * Recursively free page-table pages.
+ * All leaf mappings must already have been removed.
+ */
+void mmu_free_walk(pagetable_t pagetable)
+{
+    acquire(&mmu_lock);
+    __mmu_free_walk_locked(pagetable);
+    release(&mmu_lock);
 }
 
 /*
@@ -225,6 +231,7 @@ void mmu_user_unmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free
     if ((va % PAGE_SIZE) != 0)
         panic("[MMU] Unmap user pages - not aligned");
 
+    acquire(&mmu_lock);
     for (a = va; a < va + npages * PAGE_SIZE; a += PAGE_SIZE)
     {
         if ((pte = mmu_walk(pagetable, a, 0)) == 0)
@@ -239,7 +246,10 @@ void mmu_user_unmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free
             pgfree(PA2PPN(pa));
         }
         *pte = 0;
+        mmu_invalidate_tlb_by_vaddr(a);
     }
+    sbi_remote_sfence_vma(va, npages * PAGE_SIZE);
+    release(&mmu_lock);
 }
 
 /*
@@ -449,39 +459,36 @@ int mmu_user_copyinstr(pagetable_t pagetable, char *dst, uint64_t srcva, uint64_
 }
 
 
-static void mmu_free_pagetable1(pagetable_t pagetable)
+// Internal: free PT pages without holding mmu_lock. Caller holds mmu_lock.
+static void
+__mmu_free_pagetable_locked1(pagetable_t pagetable)
 {
-    // there are 2^9 = 512 PTEs in a page table.
     for (int i = 0; i < 512; i++)
     {
         pte_t pte = pagetable[i];
         if ((pte & PTE_V) && (pte & (PTE_R | PTE_W | PTE_X)) == 0)
         {
-            // this PTE points to a lower-level page table.
             uint64_t child = PTE2PA(pte);
-//            debug("[MMU] free page table 0x%lX \n", child);
             pgfree(PA2PPN(child));
         }
     }
-//    debug("[MMU] free page table 0x%lX \n", DA2PA(pagetable));
     pgfree(DA2PPN(pagetable));
 }
 
 void mmu_free_pagetable(pagetable_t pagetable)
 {
-    // there are 2^9 = 512 PTEs in a page table.
+    acquire(&mmu_lock);
     for (int i = 0; i < 512; i++)
     {
         pte_t pte = pagetable[i];
         if ((pte & PTE_V) && (pte & (PTE_R | PTE_W | PTE_X)) == 0)
         {
-            // this PTE points to a lower-level page table.
             uint64_t child = PTE2PA(pte);
-            mmu_free_pagetable1((pagetable_t)PA2DA(child));
+            __mmu_free_pagetable_locked1((pagetable_t)PA2DA(child));
         }
     }
-//    debug("[MMU] free page table 0x%lX \n", DA2PA(pagetable));
     pgfree(DA2PPN(pagetable));
+    release(&mmu_lock);
 }
 
 

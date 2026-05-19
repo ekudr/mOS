@@ -10,46 +10,39 @@ vmem_mgr_t vm_mgr;
 vmem_mgr_t *gp_vmmgr;
 
 
-
-vmem_mgr_t vm_mgr;
-vmem_mgr_t *gp_vmmgr;
-
-
 uintptr_t
 vm_alloc(uint64_t size)
 {
     uintptr_t start, va;
     uint64_t ppn;
 
-    if((size % PAGE_SIZE) != 0) {
+    if ((size % PAGE_SIZE) != 0)
         panic("VMEM kstack size should be page aligned");
-    }    
-    
-    start = (uintptr_t)__atomic_fetch_add(&gp_vmmgr->malloc_top, size, __ATOMIC_ACQ_REL);
-//    start = (uintptr_t)arch_atomic64_fetch_add(size, gp_vmmgr->malloc_top);
-/*    
+
     acquire(&gp_vmmgr->lock);
+    if (gp_vmmgr->malloc_top + size > gp_vmmgr->kstack_top) {
+        release(&gp_vmmgr->lock);
+        return 0;
+    }
     start = gp_vmmgr->malloc_top;
     gp_vmmgr->malloc_top += size;
     release(&gp_vmmgr->lock);
-*/
 
-    for(va = start; va < start + size; va += PAGE_SIZE){
+    for (va = start; va < start + size; va += PAGE_SIZE) {
         ppn = pgalloc();
-        if(ppn == 0){
-            panic("[VMEM] vm_alloc no pages");
-        }
-
-    
-        if(mmu_map_pages(kernel_pagetable, va, PAGE_SIZE, PPN2PA(ppn), PTE_R| PTE_W | PTE_G) != 0){
+        if (ppn == 0)
+            goto rollback;
+        if (mmu_map_pages(kernel_pagetable, va, PAGE_SIZE, PPN2PA(ppn), PTE_R | PTE_W | PTE_G) != 0) {
             pgfree(ppn);
-            panic("[VMEM] vm_alloc map err");
+            goto rollback;
         }
-        // test of memory
-//        memset((void *) va, 0, PAGE_SIZE);        
     }
-
     return start;
+
+rollback:
+    if (va > start)
+        mmu_user_unmap(kernel_pagetable, start, (va - start) / PAGE_SIZE, 1);
+    return 0;
 }
 
 static kmem_slub_t*
@@ -116,45 +109,39 @@ vm_new_slub(kmem_cache_t *cache)
     return slub;
 }
 
-uintptr_t 
+uintptr_t
 vm_kstack_alloc(size_t size)
 {
-    uintptr_t mem;
+    uintptr_t mem, va;
     uint64_t ppn;
 
-    if((size % PAGE_SIZE) != 0) {
+    if ((size % PAGE_SIZE) != 0)
         panic("VMEM kstack size should be page aligned");
-    }
 
-    // CHECK - add boundary check
-//    printf("[KSTACK] kstack top 0x%lX\n", gp_vmmgr->kstack_top);
-//    mem = (uintptr_t)arch_atomic64_fetch_sub(1, gp_vmmgr->kstack_top);
-    mem = (uintptr_t)__atomic_sub_fetch(&gp_vmmgr->kstack_top, (size + PAGE_SIZE), __ATOMIC_ACQ_REL);
-    mem += PAGE_SIZE;
-//    printf("[KSTACK] mem start 0x%lX 0x%lX bytes\n", mem, size);
-/*
     acquire(&gp_vmmgr->lock);
+    if (gp_vmmgr->kstack_top - (size + PAGE_SIZE) < gp_vmmgr->malloc_top) {
+        release(&gp_vmmgr->lock);
+        return 0;
+    }
     gp_vmmgr->kstack_top -= size + PAGE_SIZE;
     mem = gp_vmmgr->kstack_top + PAGE_SIZE;
     release(&gp_vmmgr->lock);
-*/
 
-    // Allocate 2 pages for stack
-    for(uintptr_t va = mem; va < mem + size; va += PAGE_SIZE){
+    for (va = mem; va < mem + size; va += PAGE_SIZE) {
         ppn = pgalloc();
-        if(ppn == 0){
-            panic("[KSTACK] can't allocate pgalloc");
-        }
-        // why to spend time on zeroing
-//        memset((void *)pg, 0, PAGESIZE);
-    
-        if(mmu_map_pages(kernel_pagetable, va, PAGE_SIZE, PPN2PA(ppn), PTE_R| PTE_W) != 0){
+        if (ppn == 0)
+            goto rollback;
+        if (mmu_map_pages(kernel_pagetable, va, PAGE_SIZE, PPN2PA(ppn), PTE_R | PTE_W) != 0) {
             pgfree(ppn);
-            panic("[KSTACK] kstack_alloc can not map stack");
+            goto rollback;
         }
     }
-
     return mem;
+
+rollback:
+    if (va > mem)
+        mmu_user_unmap(kernel_pagetable, mem, (va - mem) / PAGE_SIZE, 1);
+    return 0;
 }
 
 

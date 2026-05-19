@@ -455,21 +455,80 @@ int sched_taskfree(task_t *t)
         return -1;
     }
 
-    // Remove from hash
+    // Remove from hash and task list
     khash_remove(task_table, t->pid);
-    // Delete from list
     list_del(&t->tasklist);
-    
-    // ??? Add free of mm obj, endpoints
 
-    // Free page tables
-    if (t->trapframe)
+    // Revoke non-frame caps: endpoints, shmem, tasks, notifications, etc.
+    // CAP_FRAME (mem_reg_t) is handled by the memlist walk below.
+    if (t->caps[CAP_ROOT].type == CAP_CNODE) {
+        cap_node_t *cnode = (cap_node_t *)t->caps[CAP_ROOT].obj;
+        for (int i = 0; i < MAX_CAPS; i++) {
+            cap_entry_t *ce = &cnode->caps[i];
+            if (ce->type != CAP_NONE && ce->type != CAP_FRAME &&
+                ce->type != CAP_UNTYPED && ce->type != CAP_NULL_CAP)
+                cap_free(t, i << 8);
+        }
+        pgfree(DA2PPN(t->caps[CAP_ROOT].obj));
+        t->caps[CAP_ROOT].type = CAP_NONE;
+        t->caps[CAP_ROOT].obj  = NULL;
+    }
+    if (t->caps[MEM_ROOT].obj) {
+        pgfree(DA2PPN(t->caps[MEM_ROOT].obj));
+        t->caps[MEM_ROOT].type = CAP_NONE;
+        t->caps[MEM_ROOT].obj  = NULL;
+    }
+
+    if (t->pagetable) {
+        // Walk memlist: MMIO-aware unmap + free every user memory region.
+        if (t->mm) {
+            list_head_t *pos, *tmp;
+            list_for_each_safe(pos, tmp, &t->mm->memlist) {
+                mem_reg_t *mreg = list_entry(pos, mem_reg_t, memlist);
+                int do_free = ((mreg->status & MM_REG_STATUS_TYPE_MASK) != MM_REG_MMIO)
+                              && (mreg->shmem_block == NULL);
+                mmu_user_unmap(t->pagetable, mreg->addr,
+                               mreg->size / PAGE_SIZE, do_free);
+                list_del(&mreg->memlist);
+                mfree(mreg);
+            }
+        }
+
+        // Unmap trapframe VA (frame freed below via pgfree).
+        mmu_user_unmap(t->pagetable, TRAPFRAME, 1, 0);
+        // Unmap trampoline VA (shared global page — do not free frame).
+        mmu_user_unmap(t->pagetable, TRAMPOLINE, 1, 0);
+
+        // All leaf PTEs must now be clear; free PT pages.
+        mmu_free_walk(t->pagetable);
+        t->pagetable = NULL;
+    }
+
+    if (t->mm) {
+        asid_free(t->mm);
+        mfree(t->mm);
+        t->mm = NULL;
+    }
+
+    // Free the trapframe physical page.
+    if (t->trapframe) {
         pgfree(DA2PPN(t->trapframe));
-    if (t->pagetable)
-        mmu_free_pagetable(t->pagetable);
-//        sched_task_freepagetable(t->pagetable, t->sz);
+        t->trapframe = NULL;
+    }
+
     if (t->kstack)
         kstack_free(t->kstack);
+
+    if (t->ipc_buf) {
+        pgfree(DA2PPN(t->ipc_buf));
+        t->ipc_buf = NULL;
+    }
+
+    if (t->fpu_state) {
+        mfree(t->fpu_state);
+        t->fpu_state = NULL;
+    }
+
     notification_on_task_exit(t);
     mfree(t);
     return 0;
@@ -602,7 +661,7 @@ sched_task_pagetable(task_t *t)
     pgtable = mmu_user_pt_create();
     if (!pgtable) return NULL;
 
-    t->asid = sched_alloc_asid(t->pid);
+    t->asid = asid_alloc(t->mm);
 
     // map the trampoline code (for system call return)
     // at the highest user virtual address.
@@ -638,50 +697,6 @@ void sched_task_freepagetable(pagetable_t pagetable, uint64_t sz)
     mmu_user_pg_free(pagetable, sz);
 }
 
-/*
- * Allocating ASID for the task id.
- * Easy version for now.
- * Linux uses reusable CONTEXTID
- * !!!REWRITE
- */
-uint16_t
-sched_alloc_asid(uint64_t id)
-{ 
-    uint64_t asid = id;
-    asid ^= asid >> 32;
-    asid ^= asid >> 16;
-    asid &= 0xFFFF;
-
-    if(asid == 0) asid = 0xFFFF;
-    // should be like (asid & kernel_map.asid_max)
-    return 0;// (asid & ((1ULL << 16) - 1));
-}
-
-
-// Grow or shrink user memory by n bytes.
-// Return 0 on success, -1 on failure.
-// int
-// sched_growtask(int n)
-// {
-//     uint64_t    sz;
-//     task_t *t = mytask();
-
-//  //   sz = t->sz;
-//     if (n > 0)
-//     {
-//         if ((sz = mmu_user_vmalloc(t->pagetable, sz, sz + n, PTE_W)) == 0)
-//         {
-//             return -1;
-//         }
-//     }
-//     else if (n < 0)
-//     {
-//         sz = mmu_user_vmdealloc(t->pagetable, sz, sz + n);
-//     }
-//  //   t->sz = sz;
-    
-//     return 0;
-// }
 
 int fl2perm(int flags)
 {

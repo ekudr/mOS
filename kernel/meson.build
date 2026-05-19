@@ -2,6 +2,7 @@
 kernel_sources = [
     'init.c',
     'mm/pgpool.c',
+    'mm/asid.c',
     'mm/mmu.c',
     'mm/kmem.c',
     'mm/shmem.c',

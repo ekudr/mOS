@@ -14,32 +14,20 @@ struct {
     uint64_t nfree;
 } pg_pool;
 
-/* 
+/*
  * Free the page of physical memory pointed at by direct map va.
  */
 void pgfree(uint64_t ppn)
- {
-    uint64_t    f;
+{
     struct page_item *p;
-/*
-    if (!ppn_valid(ppn))
-    {
-        panic("pg_free");
-    }
-*/
-    f = ppn_to_page(ppn)->flags;
-    f &= ~PG_active;
-//    f |= PG_buddy; 
-    ppn_to_page(ppn)->flags = f;
-//    p = (struct page_item *)va;
+
     p = &ppn_to_page(ppn)->buddy_page;
-//    debug("[PAGEPOOL] free page ppn 0x%lX page_t at 0x%lX\n", ppn, p);
     p->ppn = ppn;
-//    debug("[PAGEPOOL] free page ppn 0x%lX page_t at 0x%lX\n", p->ppn, p);
-    acquire(&pg_pool.lock); 
+    acquire(&pg_pool.lock);
+    ppn_to_page(ppn)->flags &= ~PG_active;
+    ppn_to_page(ppn)->flags |= PG_buddy;
     list_add_tail(&pg_pool.qfree, &p->freelist);
-    pg_pool.nfree++; 
-    ppn_to_page(p->ppn)->flags |= PG_buddy;   
+    pg_pool.nfree++;
     release(&pg_pool.lock);
 }
 
@@ -115,36 +103,24 @@ pg_pool_init()
  * Returns a PPN.
  * Returns 0 if the memory cannot be allocated.
  */ 
-uint64_t 
-pgalloc(void) 
+uint64_t
+pgalloc(void)
 {
-
     struct page_item *p;
-    uint64_t    f, ppn;
+    uint64_t ppn;
 
-    if(list_is_empty(&pg_pool.qfree))
-        return 0;
-
-        
     acquire(&pg_pool.lock);
-//    debug("Next free at 0x%lX\n", pg_pool.qfree.next);
+    if (list_is_empty(&pg_pool.qfree)) {
+        release(&pg_pool.lock);
+        return 0;
+    }
     p = list_first_entry(&pg_pool.qfree, struct page_item, freelist);
-//    debug("[PAGEPOOL] alloc page ppn 0x%lX page_t at 0x%lX\n", p->ppn, p); 
-//debug("Physical address 0x%lX\n",mmu_walk_addr(kernel_pagetable, p)); 
     list_del(&p->freelist);
-//    debug("Page allocate PPN 0x%lX DA 0x%lX\n", p->ppn, p);
     ppn = p->ppn;
-//   debug("[PAGEPOOL] alloc page ppn 0x%lX page_t at 0x%lX\n", ppn, p);
-    f = __atomic_load_n(&ppn_to_page(ppn)->flags, __ATOMIC_ACQUIRE);
-//    f = READ_ONCE(ppn_to_page(ppn)->flags);
-    f &= ~PG_buddy;
-    f |= PG_active; 
-    __atomic_store_n(&ppn_to_page(ppn)->flags, f, __ATOMIC_RELEASE);
+    ppn_to_page(ppn)->flags &= ~PG_buddy;
+    ppn_to_page(ppn)->flags |= PG_active;
+    pg_pool.nfree--;
     release(&pg_pool.lock);
-    
-//    debug("[PGALLOC] ppn 0x%lX page_t 0x%lX flags 0x%lX\n", ppn, p, ppn_to_page(p->ppn)->flags);
-        
-//    memset((void *)PPN2DA(ppn), 0, PAGE_SIZE);
     return ppn;
 }
 

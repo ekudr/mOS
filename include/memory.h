@@ -213,6 +213,9 @@ typedef struct mem_struct
     uint64_t    end_code;
 
     list_head_t         memlist;
+
+    uint16_t    asid;
+    uint64_t    asid_gen;
 } mem_struct_t;
 
 

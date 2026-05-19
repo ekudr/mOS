@@ -29,6 +29,7 @@ typedef struct shmem_page
 typedef struct shmem_block
 {
     kobject_t   ko;
+    spinlock_t  lock;
     size_t      size;
     size_t      npages;
     struct shmem_page *head;

@@ -17,12 +17,11 @@ static int __shmem_alloc_pages(shmem_block_t * shmb)
 {
     uint64_t        ppn;
     shmem_page_t    *page, *prev_page = NULL;
-//    debug("[SHMEM] creating 0x%lX pages\n", shmb->npages);
+    acquire(&shmb->lock);
     for (int i = 0; i < shmb->npages; i++){
         ppn = pgalloc();
         if (ppn == 0){
-            panic("[SHMEM] no memory");
-//          unmap(shmb) 
+            release(&shmb->lock);
             return -ENOMEM;
         }
         page = &ppn_to_page(ppn)->shmem_page;
@@ -30,14 +29,13 @@ static int __shmem_alloc_pages(shmem_block_t * shmb)
         page->head = shmb;
         page->next = NULL;
         if (prev_page != NULL){
-            prev_page->next = page;            
+            prev_page->next = page;
         } else {
             shmb->head = page;
         }
-//        debug("page ppn 0x%lx\n", ppn);    
         prev_page = page;
     }
-
+    release(&shmb->lock);
     return SUCCESS;
 }
 
@@ -52,6 +50,7 @@ int shmem_free_memory(shmem_block_t * shmb)
     shmem_page_t    *page, *next;
     int pg, cnt;
 
+    acquire(&shmb->lock);
     pg  = shmb->npages;
     cnt = 0;
 
@@ -65,6 +64,7 @@ int shmem_free_memory(shmem_block_t * shmb)
 
     shmb->npages = 0;
     shmb->head = NULL;
+    release(&shmb->lock);
 
     return SUCCESS;
 }

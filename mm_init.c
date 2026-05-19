@@ -311,6 +311,7 @@ vm_init(void)
 
     mmu_free_pagetable((pagetable_t)PA2DA(early_pagetable));
 
+    asid_init();
     vmem_init();
     kmem_init();
 
