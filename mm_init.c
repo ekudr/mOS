@@ -142,7 +142,7 @@ early_vm_init(void)
     enum mtype  type;
     kernel_map.pgmap_base = va;
     
-    early_printf("Size of page_t 0x%lX\n", sizeof(page_t));
+//    early_printf("Size of page_t 0x%lX\n", sizeof(page_t));
     for (int i = 0; i < NELEM(board_memmap); i++)
     {
         type = board_memmap[i].type;
@@ -182,9 +182,8 @@ early_vm_init(void)
                  (PTE_R | PTE_W | PTE_G));
 
     // map page_map[]
-
-        early_vm_map(early_pagetable, PGMAP_START, kernel_map.pgmap_size,
-                        kernel_map.pgmap_base, (PTE_R | PTE_W | PTE_G));
+    early_vm_map(early_pagetable, PGMAP_START, kernel_map.pgmap_size,
+                    kernel_map.pgmap_base, (PTE_R | PTE_W | PTE_G));
 
 }
 /*
