@@ -16,7 +16,6 @@ void syscall_set_MR(struct task *t, int n, uint64_t val);
 uint64_t __sys_wait_irq(void);
 
 uint64_t __sys_yield(void);
-uint64_t sys_fork(void);
 uint64_t sys_exit(void);
 uint64_t sys_exec(void);
 uint64_t sys_getpid(void);

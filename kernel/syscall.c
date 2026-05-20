@@ -129,7 +129,6 @@ syscall_argaddr(int n, uint64_t *ip)
 static uint64_t (*syscalls[])(void) = {
     [SYS_yield]     = __sys_yield,
     [SYS_wait]  = __sys_wait_irq,
-//    [SYS_fork]      =  sys_fork,
     [SYS_exit]      =  sys_exit,
 //    [SYS_exec]      =  sys_exec,
     [SYS_getpid]    =  sys_getpid,

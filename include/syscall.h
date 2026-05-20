@@ -3,11 +3,11 @@
 #define _SYSCALL_H
 
 // System call numbers
-#define SYS_yield   1
-//#define SYS_fork    1
+
 #define SYS_exit    2
 #define SYS_wait    3
-#define SYS_pipe    4
+#define SYS_yield   4
+//#define SYS_pipe    4
 #define SYS_read    5
 #define SYS_kill    6
 #define SYS_exec    7
@@ -47,6 +47,13 @@
 #define SYS_irq_act 51
 
 #define SYS_task_ctrl 60
+
+// SYS_task_ctrl op selectors (passed in a2). Mirrored in include/sched.h.
+#define SYS_TASK_OP_MEM_ALLOC  1
+#define SYS_TASK_OP_MEM_MAP    2
+#define SYS_TASK_OP_RUN        3
+#define SYS_TASK_OP_GETPID     4
+#define SYS_TASK_OP_MEM_SHARE  5
 
 // #define SYS_ipc_snd 62
 // #define SYS_ipc_rcv 63

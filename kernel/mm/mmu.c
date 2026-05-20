@@ -142,6 +142,46 @@ mmu_memmap(pagetable_t pgtable, uint64_t vaddr, uint64_t size, int perm)
     return SUCCESS;
 }
 
+int mmu_walk_pte(pagetable_t pagetable, uint64_t va, uint64_t *pa, int *perm)
+{
+    acquire(&mmu_lock);
+    pte_t *pte = mmu_walk(pagetable, va, 0);
+    if (pte == NULL || (*pte & PTE_V) == 0) {
+        release(&mmu_lock);
+        return -1;
+    }
+    if (pa)   *pa   = PTE2PA(*pte);
+    if (perm) *perm = (int)(PTE_FLAGS(*pte) & (PTE_R | PTE_W | PTE_X | PTE_U));
+    release(&mmu_lock);
+    return 0;
+}
+
+// Share pages from `from` into `to` at the same VA, preserving per-page
+// permissions. Source mappings are left intact.
+int mmu_share_pages(pagetable_t from, pagetable_t to, uint64_t va, uint64_t len)
+{
+    uint64_t va_start = va;
+    int rc = SUCCESS;
+
+    acquire(&mmu_lock);
+    for (uint64_t i = 0; i < len; i++, va += PAGE_SIZE) {
+        pte_t *pte = mmu_walk(from, va, 0);
+        if (pte == NULL || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0) {
+            rc = -EINVAL;
+            goto out;
+        }
+        int perm = (int)(PTE_FLAGS(*pte) & (PTE_R | PTE_W | PTE_X | PTE_U));
+        if (__mmu_map_pages_locked(to, va, PAGE_SIZE, PTE2PA((uint64_t)*pte), perm) != 0) {
+            rc = -ENOMEM;
+            goto out;
+        }
+    }
+    sbi_remote_sfence_vma(va_start, (uint64_t)len << PAGE_SHIFT);
+out:
+    release(&mmu_lock);
+    return rc;
+}
+
 int mmu_move_pages(pagetable_t from, pagetable_t to, uint64_t va_src,
                     uint64_t va_dst, uint64_t len, int perm)
 {

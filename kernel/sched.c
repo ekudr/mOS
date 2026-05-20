@@ -44,8 +44,7 @@ void sched_init(void)
 /*
  * Return the current struct task *, or zero if none.
  */
-task_t *
-mytask(void)
+task_t *mytask(void)
 {
     push_off();
     task_t *t = current_cpu->task;
@@ -530,7 +529,9 @@ int sched_taskfree(task_t *t)
     }
 
     notification_on_task_exit(t);
-    mfree(t);
+    // Task struct itself was page-allocated in sched_taskalloc (PPN2DA(ppn)),
+    // so it must be returned via pgfree, not mfree.
+    pgfree(DA2PPN(t));
     return 0;
 }
 
@@ -784,6 +785,67 @@ int sched_task_control(task_t *t)
         set_task_state(task, RUNNABLE);
         release(&task->lock);
 
+        break;
+    }
+
+    case TASK_OP_GETPID: {
+        int cap_id = syscall_get_MR(t, 0);
+
+        cap_entry_t *ce = cap_lookup(t, cap_id);
+        if (!ce) return -ERR_CAP_INVAL;
+
+        if (ce->type != CAP_TASK) return -ENOPERM;
+
+        task_t *task = (task_t *)ce->obj;
+        return (int)task->pid;
+    }
+
+    // Share the caller's MM_REG_MEM regions (code/rodata/data/bss) into the
+    // child task's address space at the same virtual addresses, preserving
+    // per-page permissions. Child's stack and IPC mappings are untouched.
+    // Shared regions are tracked in the child memlist as MMIO so the child's
+    // exit path will unmap but not free the underlying frames — parent owns
+    // them and must outlive the child.
+    case TASK_OP_MEM_SHARE: {
+        int cap_id = syscall_get_MR(t, 0);
+
+        cap_entry_t *ce = cap_lookup(t, cap_id);
+        if (!ce) return -ERR_CAP_INVAL;
+        if (ce->type != CAP_TASK) return -ENOPERM;
+
+        task_t *child = (task_t *)ce->obj;
+        if (!child->mm || !t->mm) return -EINVAL;
+
+        list_head_t *pos;
+        acquire(&t->mm->lock);
+        list_for_each(pos, &t->mm->memlist) {
+            mem_reg_t *mreg = list_entry(pos, mem_reg_t, memlist);
+            if ((mreg->status & MM_REG_STATUS_TYPE_MASK) != MM_REG_MEM)
+                continue;
+
+            uint64_t npages = mreg->size / PAGE_SIZE;
+            if (mmu_share_pages(t->pagetable, child->pagetable,
+                                mreg->addr, npages) != SUCCESS) {
+                release(&t->mm->lock);
+                return -ENOMEM;
+            }
+
+            mem_reg_t *cmreg = (mem_reg_t *)malloc(sizeof(mem_reg_t));
+            if (!cmreg) {
+                release(&t->mm->lock);
+                return -ENOMEM;
+            }
+            cmreg = (mem_reg_t *)ko_init((kobject_t *)cmreg, child, KO_FRAME);
+            cmreg->addr        = mreg->addr;
+            cmreg->size        = mreg->size;
+            cmreg->status      = MM_REG_MMIO | MM_REG_VALID;
+            cmreg->shmem_block = NULL;
+
+            acquire(&child->mm->lock);
+            list_add(&child->mm->memlist, &cmreg->memlist);
+            release(&child->mm->lock);
+        }
+        release(&t->mm->lock);
         break;
     }
 

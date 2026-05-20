@@ -25,11 +25,6 @@ uint64_t __sys_yield(void)
     return 0;
 }
 
-uint64_t sys_fork(void)
-{
-    return 0;
-}
-
 uint64_t __sys_wait_irq(void)
 {
     return 0;

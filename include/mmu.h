@@ -230,8 +230,19 @@ void     asid_init(void);
 uint16_t asid_alloc(struct mem_struct *mm);
 void     asid_free(struct mem_struct *mm);
 
-int mmu_move_pages(pagetable_t from, pagetable_t to, uint64_t va_src, 
+int mmu_move_pages(pagetable_t from, pagetable_t to, uint64_t va_src,
                     uint64_t va_dst, uint64_t len, int perm);
+
+// Look up va in pagetable. On success returns 0 and fills *pa with the
+// physical address and *perm with the PTE permission bits (R|W|X|U).
+// Returns -1 if the page is not mapped.
+int mmu_walk_pte(pagetable_t pagetable, uint64_t va, uint64_t *pa, int *perm);
+
+// Map pages from `from` into `to` at the same VA without unmapping from `from`
+// (unlike mmu_move_pages, which empties the source). Caller is responsible
+// for ensuring frames remain valid for the lifetime of the destination
+// mapping — there is no refcount.
+int mmu_share_pages(pagetable_t from, pagetable_t to, uint64_t va, uint64_t len);
 
 
                     void mmu_pt_dump(pagetable_t pt);

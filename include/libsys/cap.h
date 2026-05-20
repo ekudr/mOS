@@ -19,5 +19,9 @@ int cap_free(int cap_id);
 
 int cap_task_mem_move(int cap_id, void *vaddr, int mem_cap, uint64_t flags);
 int cap_task_run(int cap_id, uint64_t entry);
+int cap_task_getpid(int cap_id);
+int cap_task_mem_share(int cap_id);
+
+void *cap_shmem_attach(int shmem_cap, void *addr, int flags);
 
 #endif /* __CAP_H__ */

@@ -330,23 +330,21 @@ void *sys_ipc_shm_attach(task_t *t, int cap_id, const void *addr, int flags)
     pagetable_t pgtable;
     uint64_t    va, sz;
     shmem_page_t *p;
-//    debug("[IPC] shmat id 0x%lX addr 0x%lX fl 0x%lX\n", shmid, addr, flags);
+
     if (cap_id == 0) return NULL;
 
     cap_entry_t *ce = cap_lookup(t, cap_id);
     if (!ce || ce->type != CAP_SHMEMORY || !(ce->rights & CRIGHT_MAP)){
         return NULL;
-    }    
+    }
 
     shmem_block_t *shm = (shmem_block_t *)ce->obj;
-//    if (shm->ko.type != KO_SHMEM) return NULL; 
-
     sz = shm->npages << PAGE_SHIFT;
 
     mem_reg_t *mreg = uvm_alloc_vmem(t, (uint64_t)addr, sz);
     if (mreg == NULL){
         panic("[IPC] can not allocate memreg");
-        return NULL;      
+        return NULL;
     }
 
     mreg->shmem_block = shm;
@@ -354,16 +352,15 @@ void *sys_ipc_shm_attach(task_t *t, int cap_id, const void *addr, int flags)
 
     va = mreg->addr;
     p  = shm->head;
-    for (uint64_t a = va, i = 0; i < shm->npages; i++, a += PAGE_SIZE){    
+    for (uint64_t a = va, i = 0; i < shm->npages; i++, a += PAGE_SIZE){
         if (p == NULL){
             panic("[IPC] shmem attach not full memblock");
             break;
-        }    
-        uint64_t pa = p->ppn << PAGE_SHIFT;   
-//        debug("Mapping va 0x%lX pa 0x%lX\n", a, pa);
+        }
+        uint64_t pa = p->ppn << PAGE_SHIFT;
         if (mmu_map_pages(pgtable, a, PAGE_SIZE, pa, PTE_R | PTE_U | PTE_W) != SUCCESS)
-            return NULL; 
-        p = p->next;    
+            return NULL;
+        p = p->next;
     }
 
     return (void *)va;

@@ -11,6 +11,8 @@ libsys_sources = [
     'debug.c',
     'riscv_timer.c',
     'elf.c',
+    'thread_entry.S',
+    'thread.c',
 ]
 
 

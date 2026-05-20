@@ -204,8 +204,8 @@ kmem_alloc(uint64_t size)
     return 0;
 }
 
-void 
-kmem_free(void *ptr) 
+void
+kmem_free(void *ptr)
 {
 
     int idx;
@@ -214,7 +214,7 @@ kmem_free(void *ptr)
 
     idx = virt2sidx(ptr);
     slub = &slub_map[idx];
- 
+
 //    debug("[KMEM] slub nextfree 0x%lX\n",slub->nextfree);
     if(slub->slub_cache == NULL)
         goto not_slub;

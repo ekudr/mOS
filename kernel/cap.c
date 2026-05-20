@@ -129,6 +129,12 @@ void cap_destroy(kobject_t *ko, uint32_t type)
     if (type == CAP_SHMEMORY) {
 //        debug("[CAP] free shared memory 0x%lX\n", ko);
         shmem_free_memory((shmem_block_t *)ko);
+    } else if (type == CAP_TASK) {
+        // Task structs are page-allocated (PPN2DA in sched_taskalloc), not
+        // kmem-allocated. mfree would feed a direct-map page into kmem_free
+        // and either corrupt the slub table or crash. Route through the
+        // proper teardown which unmaps memory, frees caps, drops ASID, etc.
+        sched_taskfree((task_t *)ko);
     } else {
         mfree(ko);
     }
@@ -458,11 +464,11 @@ int cap_grant_into(task_t *from, int from_cap_id,
             goto out_unlock;
         }
 
-        if (to_ce->type != CAP_UNTYPED || to_ce->type != CAP_NONE) {
+        if (to_ce->type != CAP_UNTYPED && to_ce->type != CAP_NONE) {
             new_cap = -EEXIST;
-        goto out_unlock;
-    }
-    i = to_slot;
+            goto out_unlock;
+        }
+        i = to_slot;
     } else {
         // find free slot
              

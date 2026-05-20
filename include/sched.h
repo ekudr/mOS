@@ -235,11 +235,14 @@ typedef struct task_manager {
     task_t *inittask;
 } task_manager_t;
 
-enum {
-    TASK_OP_MEM_ALLOC = 1,
-    TASK_OP_MEM_MAP,
-    TASK_OP_RUN,
+#include <syscall.h>
 
+enum {
+    TASK_OP_MEM_ALLOC = SYS_TASK_OP_MEM_ALLOC,
+    TASK_OP_MEM_MAP   = SYS_TASK_OP_MEM_MAP,
+    TASK_OP_RUN       = SYS_TASK_OP_RUN,
+    TASK_OP_GETPID    = SYS_TASK_OP_GETPID,
+    TASK_OP_MEM_SHARE = SYS_TASK_OP_MEM_SHARE,
 };
 
 void sched_init(void);

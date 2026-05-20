@@ -79,19 +79,41 @@ int cap_dmamem_create(uint64_t size, cap_rights_t rights, uint64_t *paddr)
     return ipc_getMR(0);
 }
 
+// All cap_task_* helpers below use __syscall so the kernel return value in a0
+// is propagated to the caller. The kernel handler reads positional args from
+// a0 (cap_id), a2 (op selector), a3+ (op-specific args) — same layout as
+// syscall_send but without the IPC info word semantics.
+
 int cap_task_mem_move(int cap_id, void *vaddr, int mem_cap, uint64_t flags)
 {
-    // TASK_OP_MEM_MOVE
-    syscall_send(SYS_task_ctrl, cap_id, 0, 2, (uint64_t)vaddr,
-                   (uint64_t)mem_cap, flags, 0);
-
-    return 0;
+    return (int)__syscall(SYS_task_ctrl, (uint64_t)cap_id, (uint64_t)0,
+                          (uint64_t)SYS_TASK_OP_MEM_MAP, (uint64_t)vaddr,
+                          (uint64_t)mem_cap, flags, (uint64_t)0);
 }
 
 int cap_task_run(int cap_id, uint64_t entry)
 {
-    // TASK_OP_RUN
-    syscall_send(SYS_task_ctrl, cap_id, 0, 3, entry, 0, 0, 0);
+    return (int)__syscall(SYS_task_ctrl, (uint64_t)cap_id, (uint64_t)0,
+                          (uint64_t)SYS_TASK_OP_RUN, entry, (uint64_t)0,
+                          (uint64_t)0, (uint64_t)0);
+}
 
-    return 0;
+int cap_task_getpid(int cap_id)
+{
+    return (int)__syscall(SYS_task_ctrl, (uint64_t)cap_id, (uint64_t)0,
+                          (uint64_t)SYS_TASK_OP_GETPID, (uint64_t)0, (uint64_t)0,
+                          (uint64_t)0, (uint64_t)0);
+}
+
+int cap_task_mem_share(int cap_id)
+{
+    return (int)__syscall(SYS_task_ctrl, (uint64_t)cap_id, (uint64_t)0,
+                          (uint64_t)SYS_TASK_OP_MEM_SHARE, (uint64_t)0, (uint64_t)0,
+                          (uint64_t)0, (uint64_t)0);
+}
+
+void *cap_shmem_attach(int shmem_cap, void *addr, int flags)
+{
+    return (void *)__syscall(SYS_shmem_att, (uint64_t)shmem_cap,
+                             (uint64_t)addr, (uint64_t)flags);
 }
