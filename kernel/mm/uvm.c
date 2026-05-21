@@ -29,8 +29,8 @@ uvm_alloc_mmreg(task_t *task, uint64_t vaddr, uint64_t size, uint64_t type, int 
     mm          = t->mm;
     pgtable     = t->pagetable;
 
-//    debug("[UVM] Alloc mem reg task %d va 0x%lX size 0x%lX type 0x%lX\n",
-//            t->pid,vaddr, size, type);
+    // debug("[UVM] Alloc mem reg task %d va 0x%lX size 0x%lX type 0x%lX\n",
+    //         t->pid,vaddr, size, type);
 
     acquire(&mm->lock);
     // Allocate the stack anyway.
@@ -91,7 +91,8 @@ uvm_alloc_mmreg(task_t *task, uint64_t vaddr, uint64_t size, uint64_t type, int 
 
     mreg->addr = vaddr;
     mreg->size = size;
-
+//    debug("[UVM] Alloc mem reg task %d va 0x%lX size 0x%lX type 0x%lX\n",
+//            t->pid,vaddr, size, type);
     if (mmu_memmap(pgtable, vaddr, size, PTE_R | PTE_U | xperm) != SUCCESS)
     {
         mfree(mreg);

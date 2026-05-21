@@ -262,7 +262,7 @@ int cap_task_create(task *t)
         return -ENOMEM;
     }   
 
-
+    
     if (uvm_alloc_mmreg(new, 0, 2 * PAGE_SIZE, MM_REG_STACK, PTE_W) < 0)
             panic("[LOADER] ERROR ALOCATING MEM_REG_STACK");
     new->trapframe->sp = new->mm->start_stack;   // initial stack pointer

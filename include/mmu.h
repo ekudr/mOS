@@ -245,7 +245,7 @@ int mmu_walk_pte(pagetable_t pagetable, uint64_t va, uint64_t *pa, int *perm);
 int mmu_share_pages(pagetable_t from, pagetable_t to, uint64_t va, uint64_t len);
 
 
-                    void mmu_pt_dump(pagetable_t pt);
+void mmu_pt_dump(pagetable_t pt);
 
 #endif /* __ASSEMBLY__ */
 #endif /* __MMU_H__ */

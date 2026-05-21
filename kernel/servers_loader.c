@@ -149,7 +149,7 @@ int loader_execsvr(uint64_t addr)
     if (uvm_alloc_mmreg(t, 0, 2 * PAGE_SIZE, MM_REG_STACK, PTE_W) < 0)
             panic("[LOADER] ERROR ALOCATING MEM_REG_STACK");
 
-    /// ??? rewrite memory mapping for allocated buf
+    /// TODO: ??? rewrite memory mapping for allocated buf
     mem_reg_t * mreg = uvm_user_memmap(t, 0, PAGE_SIZE, MAP_MEMIO | MAP_READ | MAP_WRITE, DA2PA(t->ipc_buf));
 
     t->trapframe->a0 = mreg->addr;

@@ -22,7 +22,7 @@ kerrno_t irq_set(int irq, task_t *t, int flags)
     e->notif = NULL;
     e->badge = 0;
 
-//    debug("IRQ set 0x%lX for irq %d\n", t, irq); 
+//    debug("IRQ set 0x%lX for irq %d pid %d\n", t, irq, t->pid); 
     acquire(&gp_irqm->lock);
 
     khash_insert(gp_irqm->irq_table, irq, e);

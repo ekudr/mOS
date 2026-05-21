@@ -78,7 +78,7 @@ __mmu_map_pages_locked(pagetable_t pagetable, uint64_t va, uint64_t size, uint64
             return -1;
         if (*pte & PTE_V)
         {
-            printf("addr 0x%lX ", a);
+            printf("pt 0x%lX addr 0x%lX pte 0x%lX ", pagetable, a, PTE2PA(*pte));
             panic("mappages: remap");
         }
         *pte = PA2PTE(pa) | perm | PTE_V;
@@ -142,19 +142,19 @@ mmu_memmap(pagetable_t pgtable, uint64_t vaddr, uint64_t size, int perm)
     return SUCCESS;
 }
 
-int mmu_walk_pte(pagetable_t pagetable, uint64_t va, uint64_t *pa, int *perm)
-{
-    acquire(&mmu_lock);
-    pte_t *pte = mmu_walk(pagetable, va, 0);
-    if (pte == NULL || (*pte & PTE_V) == 0) {
-        release(&mmu_lock);
-        return -1;
-    }
-    if (pa)   *pa   = PTE2PA(*pte);
-    if (perm) *perm = (int)(PTE_FLAGS(*pte) & (PTE_R | PTE_W | PTE_X | PTE_U));
-    release(&mmu_lock);
-    return 0;
-}
+// int mmu_walk_pte(pagetable_t pagetable, uint64_t va, uint64_t *pa, int *perm)
+// {
+//     acquire(&mmu_lock);
+//     pte_t *pte = mmu_walk(pagetable, va, 0);
+//     if (pte == NULL || (*pte & PTE_V) == 0) {
+//         release(&mmu_lock);
+//         return -1;
+//     }
+//     if (pa)   *pa   = PTE2PA(*pte);
+//     if (perm) *perm = (int)(PTE_FLAGS(*pte) & (PTE_R | PTE_W | PTE_X | PTE_U));
+//     release(&mmu_lock);
+//     return 0;
+// }
 
 // Share pages from `from` into `to` at the same VA, preserving per-page
 // permissions. Source mappings are left intact.
@@ -316,20 +316,20 @@ void mmu_user_pg_free(pagetable_t pagetable, uint64 sz)
  * Supposed user address space from 0 to sz.
  * I used different schema. 
 */
-uint64_t
-mmu_user_vmdealloc(pagetable_t pagetable, uint64_t oldsz, uint64_t newsz)
-{
-    if (newsz >= oldsz)
-        return oldsz;
+// uint64_t
+// mmu_user_vmdealloc(pagetable_t pagetable, uint64_t oldsz, uint64_t newsz)
+// {
+//     if (newsz >= oldsz)
+//         return oldsz;
 
-    if (PGROUNDUP(newsz) < PGROUNDUP(oldsz))
-    {
-        int npages = (PGROUNDUP(oldsz) - PGROUNDUP(newsz)) / PAGE_SIZE;
-        mmu_user_unmap(pagetable, PGROUNDUP(newsz), npages, 1);
-    }
+//     if (PGROUNDUP(newsz) < PGROUNDUP(oldsz))
+//     {
+//         int npages = (PGROUNDUP(oldsz) - PGROUNDUP(newsz)) / PAGE_SIZE;
+//         mmu_user_unmap(pagetable, PGROUNDUP(newsz), npages, 1);
+//     }
 
-    return newsz;
-}
+//     return newsz;
+// }
 
 /*
  * Allocate PTEs and physical memory to grow process from oldsz to
@@ -340,35 +340,35 @@ mmu_user_vmdealloc(pagetable_t pagetable, uint64_t oldsz, uint64_t newsz)
  * Supposed user address space from 0 to sz.
  * I used different schema. 
 */
-uint64_t
-mmu_user_vmalloc(pagetable_t pagetable, uint64_t oldsz, uint64_t newsz, int xperm)
-{
-    uint64_t ppn;
-    uint64_t a;
+// uint64_t
+// mmu_user_vmalloc(pagetable_t pagetable, uint64_t oldsz, uint64_t newsz, int xperm)
+// {
+//     uint64_t ppn;
+//     uint64_t a;
 
 
-    if (newsz < oldsz)
-        return oldsz;
+//     if (newsz < oldsz)
+//         return oldsz;
 
-    oldsz = PGROUNDUP(oldsz);
-    for (a = oldsz; a < newsz; a += PAGE_SIZE)
-    {
-        ppn = pgalloc();
-        if (ppn == 0)
-        {
-            mmu_user_vmdealloc(pagetable, a, oldsz);
-            return 0;
-        }
-        memset((void *)PPN2DA(ppn), 0, PAGE_SIZE);
-        if (mmu_map_pages(pagetable, a, PAGE_SIZE, PPN2PA(ppn), PTE_R | PTE_U | xperm) != 0)
-        {
-            pgfree(ppn);
-            mmu_user_vmdealloc(pagetable, a, oldsz);
-            return 0;
-        }
-    }
-    return newsz;
-}
+//     oldsz = PGROUNDUP(oldsz);
+//     for (a = oldsz; a < newsz; a += PAGE_SIZE)
+//     {
+//         ppn = pgalloc();
+//         if (ppn == 0)
+//         {
+//             mmu_user_vmdealloc(pagetable, a, oldsz);
+//             return 0;
+//         }
+//         memset((void *)PPN2DA(ppn), 0, PAGE_SIZE);
+//         if (mmu_map_pages(pagetable, a, PAGE_SIZE, PPN2PA(ppn), PTE_R | PTE_U | xperm) != 0)
+//         {
+//             pgfree(ppn);
+//             mmu_user_vmdealloc(pagetable, a, oldsz);
+//             return 0;
+//         }
+//     }
+//     return newsz;
+// }
 
 
 
@@ -376,16 +376,16 @@ mmu_user_vmalloc(pagetable_t pagetable, uint64_t oldsz, uint64_t newsz, int xper
  * mark a PTE invalid for user access.
  * used by exec for the user stack guard page.
 */
-void
-mmu_user_vmclear(pagetable_t pagetable, uint64 va)
-{
-  pte_t *pte;
+// void
+// mmu_user_vmclear(pagetable_t pagetable, uint64 va)
+// {
+//   pte_t *pte;
   
-  pte = mmu_walk(pagetable, va, 0);
-  if(pte == 0)
-    panic("uvmclear");
-  *pte &= ~PTE_U;
-}
+//   pte = mmu_walk(pagetable, va, 0);
+//   if(pte == 0)
+//     panic("uvmclear");
+//   *pte &= ~PTE_U;
+// }
 
 /*
  * Copy from kernel to user.
@@ -537,13 +537,13 @@ void mmu_init(void)
     initlock(&mmu_lock, "mmu");
 }
 
-void mmu_pt_dump(pagetable_t pt)
-{
-    uint64_t pa0 = mmu_walk_addr(pt, 0x11000);
-    char *va = (char *)PA2DA(pa0);
-    for (size_t i = 0x0; i < 0x100; i++)
-    {
-        debug("0x%x ", va[i]);
-    }
+// void mmu_pt_dump(pagetable_t pt)
+// {
+// //    uint64_t pa0 = mmu_walk_addr(pt, 0x11000);
+//     uint64_t *va = (uint64_t *)pt;
+//     for (size_t i = 0x0; i < 512; i++)
+//     {
+//         debug("0x%x ", va[i]);
+//     }
     
-}
+// }

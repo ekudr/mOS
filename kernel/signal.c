@@ -104,7 +104,7 @@ kerrno_t signal_action(signal_t sig, uintptr_t user_sa)
 kerrno_t signal_send(task_t *dst_task, signal_t sig, signal_payload_t payload)
 {
     signal_hand_t *sh = dst_task->sighand;
-//    debug("sent signal %d payload %d th 0x%lX\n", sig, payload, th);
+//    debug("sent signal %d payload %d pid %d\n", sig, payload, dst_task->pid);
     if (sh == NULL) 
         return -ENOENT;
     uint64_t mask = sig_mask(sig);

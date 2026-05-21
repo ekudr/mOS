@@ -14,6 +14,7 @@ typedef struct {
     int    task_cap;     // CAP_TASK in caller's cspace
     int    shmem_cap;    // CAP_SHMEMORY cap in caller's cspace
     void  *shared_buf;   // shmem region VA in caller's address space
+    int    pid;          // child pid
     size_t shared_size;
 } thread_handle_t;
 

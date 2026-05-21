@@ -1,8 +1,9 @@
 #include <common.h>
 #include <libsys/ipc.h>
-//#include <memory.h>
+#include <libsys/thread.h>
 #include <string.h>
 #include <riscv.h>
+#include <sched.h>
 
 #include "syscall.h"
 
@@ -56,27 +57,32 @@ int cap = 0;
 
 struct uart_dev{
     uintptr_t base;
+    uintptr_t th_base;
     int reg_shift;
     int irq;
     int clk_div;
 } uart_dev;
 
-static inline void 
-uart_regw(int reg, uint8_t val) {
-    putreg8(val, (uint64_t)((uint64_t)uart_dev.base+(reg<<uart_dev.reg_shift)));
+static void uart_regw(int reg, uint8_t val, bool th)
+{
+    if (th) {
+        putreg8(val, (uint64_t)((uint64_t)uart_dev.th_base+(reg<<uart_dev.reg_shift)));
+    } else {
+        putreg8(val, (uint64_t)((uint64_t)uart_dev.base+(reg<<uart_dev.reg_shift)));
+    }
+    
 }
 
-static inline uint8_t 
-uart_regr(int reg){
-    return getreg8((uint64_t)((uint64_t)uart_dev.base+(reg<<uart_dev.reg_shift)));
+static uint8_t uart_regr(int reg, bool th)
+{
+    uint8_t ret;
+    if (th) {
+        ret = getreg8((uint64_t)((uint64_t)uart_dev.th_base+(reg<<uart_dev.reg_shift)));
+    } else {
+        ret = getreg8((uint64_t)((uint64_t)uart_dev.base+(reg<<uart_dev.reg_shift)));
+    }
+    return ret;
 }
-
-struct stream{
-    uint64_t flag;
-    char buf[248];
-};
-
-struct stream *buffer;
 
 void panic(const char *str)
 {
@@ -84,41 +90,40 @@ void panic(const char *str)
     for(;;);    
 }
 
-void
-uart_putc(char ch)
+void uart_putc(char ch, bool th)
 {
-    while ((uart_regr(UART_LSR) & UART_LSR_EMPTY_MASK /*UART_LSR_BUF_EMPTY_MASK*/) == 0);
+    while ((uart_regr(UART_LSR, th) & UART_LSR_EMPTY_MASK /*UART_LSR_BUF_EMPTY_MASK*/) == 0);
     if(ch == '\n')
-        uart_regw(UART_THR, '\r');
-    uart_regw(UART_THR, ch);
+        uart_regw(UART_THR, '\r', th);
+    uart_regw(UART_THR, ch, th);
 }
 
 // read one input character from the UART.
 // return -1 if none is waiting.
-int uart_getc(void) {
-  if(uart_regr(UART_LSR) & 0x01){
+int uart_getc(bool th) 
+{
+  if(uart_regr(UART_LSR, th) & 0x01){
     // input data is ready.
-    return uart_regr(UART_RHR);
+    return uart_regr(UART_RHR, th);
   } else {
     return -1;
   }
 }
 
-void
-uart_puts(char *s) {  
+void uart_puts(char *s, bool th)
+{  
     while (*s) {
-        uart_putc(*s++);
+        uart_putc(*s++, th);
     }
 }
 
-int
-uart_init(void)
+int uart_init(void)
 {
     uart_dev.base = (uintptr_t)mmap(NULL, 4096, MAP_MEMIO | MAP_READ | MAP_WRITE, (void *)UART0);
     if(uart_dev.base == 0)
         panic("[UART] init error");
 
-    
+//    debug("\x1b[31m[TTY]\x1b[0m MEMIO mapped at 0x%lX\n", uart_dev.base);
     uart_dev.reg_shift = UART0_REG_SHIFT;
     uart_dev.irq = UART0_IRQ;
     uart_dev.clk_div = UART0_DIV;
@@ -126,190 +131,142 @@ uart_init(void)
 //    debug("\x1b[31mDEBUG\x1b[0m 0x%lX\n", uart_dev.base);
 
         // wait transmitter empty
-    while ((uart_regr(UART_LSR) & UART_LSR_EMPTY_MASK) == 0);
+    while ((uart_regr(UART_LSR, false) & UART_LSR_EMPTY_MASK) == 0);
     
 
     // disable interrupts.
-    uart_regw(UART_IER, 0);
+    uart_regw(UART_IER, 0, false);
 
     // and set word length to 8 bits, no parity.
-    uart_regw(UART_LCR, UART_LCR_EIGHT_BITS);
+    uart_regw(UART_LCR, UART_LCR_EIGHT_BITS, false);
 
     // special mode to set baud rate.
-    uart_regw(UART_LCR, UART_LCR_BAUD_LATCH);
+    uart_regw(UART_LCR, UART_LCR_BAUD_LATCH, false);
 
     // LSB for baud rate of 115.2K.
-    uart_regw(0, uart_dev.clk_div);
+    uart_regw(0, uart_dev.clk_div, false);
     // MSB for baud rate of 115.2K.
-    uart_regw(1, 0x00);
+    uart_regw(1, 0x00, false);
 
     // leave set-baud mode,
     // and set word length to 8 bits, no parity.
-    uart_regw(UART_LCR, UART_LCR_EIGHT_BITS);
+    uart_regw(UART_LCR, UART_LCR_EIGHT_BITS, false);
 
 #if defined(__SPACEMIT_K1__) 
     // Enabling interrupts
     // OUT2 Signal Control.
     // OUT2 connects the UART interrupt output to the interrupt controller unit. When <Loopback Mode> is clear.
-    uint8_t msr = uart_regr(UART_MSR);
-    uart_regw(UART_MSR, (msr |= UART_MSR_OUT2));
+    uint8_t msr = uart_regr(UART_MSR, false);
+    uart_regw(UART_MSR, (msr |= UART_MSR_OUT2), false);
 #endif
     // reset and enable FIFOs.
-    uart_regw(UART_FCR, UART_FCR_FIFO_ENABLE);
-    uart_regw(UART_FCR, UART_FCR_FIFO_ENABLE | UART_FCR_FIFO_CLEAR);
+    uart_regw(UART_FCR, UART_FCR_FIFO_ENABLE, false);
+    uart_regw(UART_FCR, UART_FCR_FIFO_ENABLE | UART_FCR_FIFO_CLEAR, false);
 
 	/*
 	 * Clear the interrupt registers.
 	 */
-	(void) uart_regr(UART_LSR);
-	(void) uart_regr(UART_RHR);
-	(void) uart_regr(UART_ISR);
-	(void) uart_regr(UART_MSR);
+	(void) uart_regr(UART_LSR, false);
+	(void) uart_regr(UART_RHR, false);
+	(void) uart_regr(UART_ISR, false);
+	(void) uart_regr(UART_MSR, false);
 
     // enable unit.
-    uart_regw(UART_IER, UART_INIT_IER);
+    uart_regw(UART_IER, UART_INIT_IER, false);
 
     // enable transmit and receive interrupts.
-    uart_regw(UART_IER, uart_regr(UART_IER) | /*UART_IER_TX_ENABLE |*/ UART_IER_RX_ENABLE);
+    uart_regw(UART_IER, uart_regr(UART_IER, false) | /*UART_IER_TX_ENABLE |*/ UART_IER_RX_ENABLE, false);
 
  
 
 	/*
 	 * Clear the interrupt registers.
 	 */
-	(void) uart_regr(UART_LSR);
-	(void) uart_regr(UART_RHR);
-	(void) uart_regr(UART_ISR);
-	(void) uart_regr(UART_MSR);
+	(void) uart_regr(UART_LSR, false);
+	(void) uart_regr(UART_RHR, false);
+	(void) uart_regr(UART_ISR, false);
+	(void) uart_regr(UART_MSR, false);
 
-    irqhand.handler = irq_handler;
-    signal_action(1, &irqhand);
-
-    irq_set(UART0_IRQ, 0);
     return 0;
 }
-/*
-dm_device_t tty_dev = {
-    .type = D_TTY,
-    .name = "tty0",
-};
-*/
+
 uint64_t pid;   // Global PID of the task
 
 void irq_handler(uint32_t sig, uint64_t irq)
 {
 //    debug("[TASK%d] irq handler sig %d irq %d\n", pid, sig, irq);
-    while (uart_regr(UART_LSR) & UART_LSR_RX_READY)
+    while (uart_regr(UART_LSR, true) & UART_LSR_RX_READY)
     {
-        uart_putc(uart_getc());
+        uart_putc(uart_getc(true), true);
     }
     irq_act(UART0_IRQ, 0);
+}
 
+void ipc_handler(void *arg)
+{
+    // Child maps UART MMIO same addres as parent 
+    uart_dev.th_base = (uintptr_t)mmap(NULL, 4096, MAP_MEMIO | MAP_READ | MAP_WRITE, (void *)UART0);
+    if(!uart_dev.th_base)
+        panic("[TTY] Child MMIO mapping error");
+//    debug("\x1b[31m[TTY]\x1b[0m Thread MEMIO mapped at 0x%lX\n", uart_dev.th_base);
+    irqhand.handler = irq_handler;
+    signal_action(1, &irqhand);
+
+    irq_set(UART0_IRQ, 0);
+
+    for(;;){
+        sched_yield();
+    }
 }
 
 void init_server(void)
 {
     cap = create_capability(CAP_ENDPOINT, CRIGHT_RCV | CRIGHT_SND | CRIGHT_GRANT);
-    debug("TTY driver created cap 0x%lX\n", cap);
+    if (cap < 0)
+        panic("TTY driver creating cap");
 
-//    struct dm_register tty;
  
     int ret = devman_register("tty0", cap);    
 //    debug("[TTY] Register status %d\n", ret);
     if (ret < 0) {
-        debug("PANIC TTY");
-        for (;;);
+        panic("TTY DEVMAN register");
     }
 
     int vfs = vfs_open("/dev/tty0");
-    debug("[TTY] open vfs returned %d\n", vfs);
+//    debug("[TTY] open vfs returned %d\n", vfs);
     if (vfs < 0) {
-        // ??? transfer cap top vfs
         vfs = vfs_create("/dev/tty0", VFS_DEVICE, cap);
     }
-    debug("[TTY] create vfs returned %d\n", vfs);
+//    debug("[TTY] create vfs returned %d\n", vfs);
+
+    thread_handle_t h;
+    int rc = thread_spawn(ipc_handler, NULL, 4096, &h);
+    if (rc < 0) {
+//        debug("[TTY] thread_spawn returned %d\n", rc);
+        panic("spawn failed");
+    }
+    
 }
 
 int main()
 {
-   // uint64_t dmkey  = 0x0152474E4D564544;    // DEVICE MANAGER queue key
-    // uint64_t qkey   = 0x01204E4F43535953;
-    // uint64_t qid    = 0;
-   // uint64_t dmqid  = 0;
-   // dm_msg_t *msg;
-    
-    init_server();
+    debug("TTY driver v. 0.0.4\n");
 
-  //  char *hello = "Hello world\r\n";
-
-//    pid = getpid();
-
-//     debug("TTY driver ver. 0.0.1\n");
-    
-//     qid = shmget(qkey, 0x2000, 0);
-
-//     if (qid == 0)
-//         panic("[TTY] shared memory init error");
-//     debug("Shmem ID 0x%lX\n", qid);
-//     buffer = (struct stream *)shmat(qid, NULL, 0);
-//     debug("Shmem addr 0x%lX\n", buffer);
-//     memset(buffer, 0, 0x2000);
-/*
-    do {
-       dmqid = get_msg(dmkey, IPC_EXIST);
-    } while (!dmqid);
-
-    msg = malloc(sizeof(msg));
-    msg->type = DM_REGISTER;
-    msg->sender = pid;
-    
-    memcpy(&msg->msg.device, &tty_dev, sizeof(tty_dev));
-
-    debug("TTY dev type %d name: %s\n", msg->msg.device.type, msg->msg.device.name);
-
-    snd_msg(dmqid, 1, (uintptr_t)msg, sizeof(dm_msg_t), 0);
-
-    rcv_msg(dmqid, pid, (uintptr_t)msg, sizeof(dm_msg_t), 0);
-
-    debug("Response from %d: type %d status %d\n", msg->sender, msg->type, msg->msg.resp);
-    
-    debug("Size of stream 0x%lX\n", sizeof(struct stream));
-*/
     if (uart_init() != 0)
-        panic("[UART] init error");  
+        panic("[UART] init error");
+
+    init_server();
 
     for(;;){
         struct tty_message *msg;
         uint64_t info, sender;
         msg = (struct tty_message *)get_ipc_buffer()->msg;
 //        memset(msg, 0, sizeof(msg));
-        info = ipc_nb_recv(cap, &sender);  
+        info = ipc_recv(cap, &sender);  
         if((int)(label_from_msginfo_word(info)) < 0) panic("[TTY] info error");
 //debug("\x1b[31m0x%lX\x1b[0m", label_from_msginfo_word(info)); 
-        if (msg->type == TTY_PUT_STRING) uart_puts(msg->message);
-        // ipc_setMR(0, 0x55);
-        // _ipc_reply(msginfo_word_new(0,1,0,0));
-    //    debug("\x1b[31m[TTY]\x1b[0m msg->type %d\n", msg->type);  
-     //   debug("[TTY] received info 0x%lX\n", info);
-     //   memcpy(&msg, get_ipc_buffer()->msg, sizeof(msg));
-
-    //    if (!(ipc_receive(cap, &msg, sizeof(msg), IPC_NOWAIT) < 0)) {
-           
-    //    }
-            
-        // for (int i = 0; i < sizeof(msg->message); i++) {
-        //     if (msg->message[i]) uart_putc(msg->message[i]);
-        // }
-
-        // for (int i=0; i<0x20; i++){
-        //     if (buffer[i].flag > 0){
-        //         uart_puts(buffer[i].buf);
-        //         __atomic_store_n(&buffer[i].flag, 0, __ATOMIC_ACQ_REL);
-        //     }
-                
-        // }
+        if (msg->type == TTY_PUT_STRING) 
+            uart_puts(msg->message, false);
     }
-
-
     return 0;
 }

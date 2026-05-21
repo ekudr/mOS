@@ -59,7 +59,7 @@ int thread_spawn(void (*entry)(void *), void *arg,
         cap_free(task_cap);
         return child_pid;
     }
-
+    
     // 4. Create shmem region; needs CRIGHT_GRANT so we can grant it to child.
     shmem_cap = cap_shmem_create(shared_size, CRIGHT_MAP | CRIGHT_GRANT);
     if (shmem_cap < 0) {
@@ -99,6 +99,7 @@ int thread_spawn(void (*entry)(void *), void *arg,
     out->task_cap    = task_cap;
     out->shmem_cap   = shmem_cap;
     out->shared_buf  = shared;
+    out->pid         = child_pid;
     out->shared_size = shared_size;
     return 0;
 }
